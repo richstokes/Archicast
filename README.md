@@ -18,7 +18,6 @@ RISC OS 3.11 running natively on the Sega Dreamcast, built on KallistiOS.
 ## Status
 
 - **Runs on a real Dreamcast**: boots to the desktop in ~26-31s, and a scripted run opens the Filer and launches `!Calc`, `!Chars` and `!Edit`, matching the Mac harness at every checkpoint
-- Known issue: 1 of 9 console boots stuck before the desktop. Not reproduced since, cause unknown
 - **Display**: the desktop runs in mode 27, a true 640x480 in 16 colours. Lower resolution modes, like Lander's, are stretched to fit
 - **Sound** plays through the AICA, covering beeps, BASIC's `SOUND` and anything else using the RISC OS sound system
 - **Storage**: an SD card on the serial port adapter becomes an ADFS hard disc at `:4`, up to ~476MB, and saves survive power off. **Formatting erases the whole card**; the first boot asks first (A/Y to format, B/N to skip). With no card, saves go to floppy `:0` and are lost at power off
