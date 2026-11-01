@@ -18,11 +18,12 @@ from scorpress import unpack
 MASK26 = 0x3FFFFFC
 # Code outside the boot trace in these modules lives on disc, one unit in memory at
 # a time. Apps used together must not share a unit with what they depend on, so
-# SharedCLibrary, BASIC and FileCore stay resident.
+# SharedCLibrary, BASIC and FileCore stay resident. So do PDriverDP and PDumperSupport:
+# a print job calls them around every plot, from !Draw's overlay among others.
 OVERLAYS = {
     "draw": {"!Draw"},
     "paint": {"!Paint"},
-    "misc": {"PDriverDP", "PDumperSupport", "PDumperDM", "Printers", "NetFS",
+    "misc": {"PDumperDM", "Printers", "NetFS",
              "NetFiler", "NetPrint", "NetStatus", "NetUtils", "BroadcastLoader", "Econet",
              "BBCEconet", "DOSFS", "Debugger", "Portable", "SerialDeviceDriver",
              "SerialDeviceSupport", "ParallelDeviceDriver", "Podule"},

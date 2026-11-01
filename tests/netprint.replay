@@ -1,0 +1,13 @@
+# Open !NetPrint and press Test page. With no printer set that stops with an error, which
+# is the checked case. Set DREAM_PRINTER to tests/printserver.py to get a page out.
+70 key 0 12 1
+70.1 key 0 12 0
+73 type filer_run resources:$.apps.!netprint\n
+78 key 4 7 1
+78.1 key 4 7 0
+88 shot build/np1.ppm
+88.2 move -1000 1000
+90 move 247 -150
+92 button 1
+92.1 button 0
+150 shot build/np2.ppm

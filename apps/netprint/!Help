@@ -1,0 +1,7 @@
+NetPrint prints over the network to an AirPrint printer that takes URF, from
+anything that uses the RISC OS printer drivers, such as !Draw and !Edit.
+
+Run it once, fill in the printer's address and pick the paper. Save keeps both
+on a VMU. It has to stay on the icon bar, as it does the job of !Printers. Print
+as usual from any application, or drop a text file on the icon. Test page shows
+that it all works.

@@ -30,7 +30,7 @@ Each known instruction word gets one precompiled routine that takes its PC as an
 The disc holds `rom.bin` and `ov_N.bin`. Under dcload the console reads the same files over `/pc`.
 
 - ROM data: hot pages load into RAM at boot; 12 cold pages stream through an 8-slot cache, using the page tables. Fewer are cold than you'd hope. The kernel walks module headers on every service call and ResourceFS scans Messages and ROMFonts. Those cold pages also go hot once `!Draw` runs (28k disc reads with 3 slots, 21 with 8), so only ~130KB leaves RAM
-- Code: blocks outside the boot trace in `!Draw`, `!Paint` and a misc group (printing, network, DOSFS) become overlay units linked to one fixed region. A dispatch miss loads the unit. Blocks keep no native stack, so swapping at any dispatch is safe. Boot never loads code from disc
+- Code: blocks outside the boot trace in `!Draw`, `!Paint` and a misc group (printer dumpers, network, DOSFS) become overlay units linked to one fixed region. A dispatch miss loads the unit. Blocks keep no native stack, so swapping at any dispatch is safe. Boot never loads code from disc
 - SharedCLibrary, BASIC and FileCore stay resident on purpose, as every app uses them and paging them would mean a seek per task switch
 
 Console check (10/31): the `tests/draw.replay` drawing session matched the harness at both checkpoints, with its two key events removed on both sides because hardware replays do not support keys yet.
@@ -170,6 +170,9 @@ RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based 
 | +7 | GetConfig | r0 -> 80 byte block |
 | +8 | SaveConfig | r0 -> config, written to a VMU |
 | +9 to +16 | SockOpen, Bind, Connect, Send, Recv, SendTo, RecvFrom, Close | non-blocking; -35 means try again |
+| +25 | PrintDump | the dumper veneer, see Printing; out r0 = 0 ok, 1 call again, 2 failed |
+| +26 to +28 | PrintGetConfig, PrintSetConfig, PrintSaveConfig | r0 -> 64 byte block: paper, host |
+| +29 | PrintStatus | r0 -> 60 byte block: state, pages, bytes, text |
 
 Addresses are one word, most significant byte first. Blocks are laid out in `src/net.h`.
 
@@ -228,6 +231,58 @@ Open question: this is the same launch problem as `!Ping`. Under dcload a script
 
 `!Web` and `!NetSetup` sit on the icon bar: closing a window leaves them running, and the icon menu quits. `!NetSetup` doesn't need to stay running for anything, as TCP/IP is native and up from power on. The icon is only there for status.
 
+## Printing
+
+### Problem Statement
+
+RISC OS has a full printing stack in ROM, but it ends at a parallel port and the printer definitions were on a disc. The printer on hand, a Brother HL-L2305, is on the network and takes no PostScript or PCL, only raster over IPP (`document-format-supported` is URF and PWG raster).
+
+### Proposal
+
+Keep everything up to the raster, as `PDriverDP` already renders pages with the ROM's own fonts and Draw module, so `!Edit` and `!Draw` print unchanged. Replace the last stage:
+
+1. `PDriverDP` calls a dumper with a strip of 1 bit pixels and a reason in r11. Ours is ~30 words of ARM in the `DreamApps` module (`tools/mkapps.py`), registered as dumper 40 at init
+2. The veneer hands everything but colours to the PrintDump SWI. `src/print.c` turns rows into URF in a 128KB ring, held only during a job
+3. A worker thread streams the ring as one chunked HTTP POST, an IPP Print-Job. The SWI says "call again" while the ring is full, so a slow printer holds up the job and not the machine
+
+300dpi 1 bit, not grey: strips live in the Wimp free pool, so 8 bits a pixel would cost 8x the redraws. The printer gets 8 bit lines either way, as W8 is all URF offers. They compress away, ~530KB for the test page. **Dithering is `PDriverDP`'s, not the printer's.**
+
+`!NetPrint` calls `PDriver_SetDriver`, `SetInfo` and `SetPageSize`, then acts as the printer manager on the Wimp. That took a read of `!Printers`, which is BASIC inside the ROM:
+
+- An application's Print sends `PrintSave`. If nothing answers that's "Printer application must be loaded"
+- We reply with `PrintFile`. An application can answer `WillPrint`, and neither of ours does
+- When that bounces we send `PrintTypeOdd`. `!Draw` answers `PrintTypeKnown` and prints through PDriver itself
+- When that bounces too it's a file transfer. `!Edit` saves to `<Wimp$Scrap>` and `!NetPrint` typesets the text in Corpus. So printing from `!Edit` needs a writable disc, and any type other than text gets refused. Dropping a text file on the icon takes the same path
+
+Decision: mono for now and no queue. Down the road a grey strip type would give nicer photos from `!Paint`, at the cost above.
+
+### Considerations
+
+- `PDriverDP` and `PDumperSupport` came out of the misc overlay. A print job calls them around every plot, and one overlay at a time means `!Draw` would swap a unit in for each, ~1s a go. Costs ~126KB of ELF
+- `PDriverDP` takes r3 back from StartPage as rows still to send blank, so handling them and leaving r3 alone prints everything twice as low
+- `PDumper_StartJob` insists on a palette file, even for 1 bit. Skip it: for type 0 `PDumper_SetColour` is arithmetic and never touches the job's block
+- A URF page header is 32 bytes. Not 44, as the first go had it, and `tests/printserver.py` shared the mistake, so a fake printer passed what the real one rejected with `document-format-error`. libcups's `CUPS_RASTER_WRITE_APPLE` is the thing to compare against. The file header's page count is 0, as we don't know it yet, and the Brother doesn't care
+- The Brother answers as soon as it has the job, then takes ~30s to print a page. `Sent to the printer` doesn't mean it worked: paper jams and the like aren't reported. `job-state` would tell us, if anyone wants to poll it
+- An application prints with `printer:` open and nothing goes down it. The file is only PDriver's handle for the job
+
+Open question: nothing resolves `.local`, and I doubt KOS can send multicast (untested), so the address is typed in and goes stale if DHCP moves the printer. A DHCP reservation is the easy fix.
+
+### Results
+
+11/1, Mac harness, real sockets: the test page printed on the HL-L2305 (job 931, `job-completed-successfully`, 1 impression). `!Edit` and `!Draw` printed to `tests/printserver.py`, which decodes URF to PNGs. The real printer has only had the test page.
+
+11/1, Flycast, emulated BBA: the Dreamcast build sent the test page to `tests/printserver.py` through the KOS stack, with the same 1368 rows of ink. Used a temporary build with the address preset, as replays lose typed characters. Not tried on a console, and the VMU save has not run anywhere.
+
+Page time on hardware is unknown. BASIC redraws a page once per strip, and the number of strips depends on free memory.
+
+```bash
+python3 tests/printserver.py 8631 build/job
+```
+
+```bash
+DREAM_PRINTER=127.0.0.1:8631/ipp/print DREAM_REPLAY=tests/netprint.replay ./build/dreamrisc-host build/rom.bin assets/cmos.bin 170 build/shot.ppm
+```
+
 ## Considerations
 
 - Size: ~1.2MB of ARM becomes ~8.5MB of SH-4 plus ~1MB of tables, so ~7x. Out-of-line memory helpers and whole-ROM flag liveness are already in, and the latter only saved ~1%
@@ -237,6 +292,8 @@ Open question: this is the same launch problem as `!Ping`. Under dcload a script
 ## Testing
 
 Flycast's pointer can drift from the host mouse, so use scripted input on the harness.
+
+Of note is that the sum reads screen memory in a straight line and ignores hardware scrolling. Once a command line has scrolled the screen, the sum covers RAM past the end of the screen, so an unrelated allocation can move it with every visible pixel the same. Compare frames before chasing one of those.
 
 ```bash
 tools/converge.sh tests/apps.replay 136

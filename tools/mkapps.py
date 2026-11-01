@@ -114,51 +114,144 @@ def build_pack(apps):
 
 
 SCRAP_CMDS = [b"Set Wimp$ScrapDir ADFS:$\0", b"Set Wimp$Scrap ADFS:$.ScrapFile\0"]
+DUMPER_NUMBER = 40      # no Acorn dumper uses it
+PDRIVER_DP = 7          # PDriverDP's number with the PDriver sharer
+PDRIVER_VERSION = 0x148 # the newest PDriverDP takes; has to fit a MOV
+XDREAM_PRINT_DUMP = 0xEF0EDC19  # X form of DreamNet SWI +25
+PRINT_ERROR = b"The network printer failed. See !NetPrint for why.\0"
+
+
+def assemble(items):
+    """Words, or functions of (address, labels) giving a word; strings are labels, bytes data."""
+    labels, at = {}, 0
+    for item in items:
+        if isinstance(item, str):
+            labels[item] = at
+        elif isinstance(item, bytes):
+            at += len(item) + (-len(item) & 3)
+        else:
+            at += 4
+    out, at = bytearray(), 0
+    for item in items:
+        if isinstance(item, str):
+            continue
+        if isinstance(item, bytes):
+            data = item + bytes(-len(item) & 3)
+        else:
+            data = struct.pack("<I", item(at, labels) if callable(item) else item)
+        out += data
+        at += len(data)
+    return bytes(out)
+
+
+def adr(reg, label):
+    def encode(at, labels):
+        offset = labels[label] - (at + 8)
+        assert 0 <= offset < 256
+        return 0xE28F0000 | reg << 12 | offset
+    return encode
+
+
+def branch(cond, label):
+    return lambda at, labels: cond << 28 | 0x0A000000 | ((labels[label] - (at + 8)) >> 2 & 0xFFFFFF)
+
+
+def offset(label):
+    return lambda at, labels: labels[label]
+
+
+EQ, HI, VS = 0, 8, 6
 
 
 def arm_module():
-    """Registers the pack and sets the scrap variables !Scrap would set; also answers ResourceFS restarting."""
-    title = b"DreamApps\0\0\0"
-    help_text = b"DreamApps\t0.02 (1 Nov 2026)\0"
-    help_text += bytes(-len(help_text) & 3)
-    code_words = 7 + 9 + 8
-    title_at = code_words * 4 + 4
-    help_at = title_at + len(title)
-    cmd1 = help_at + len(help_text)
-    cmd2 = cmd1 + len(SCRAP_CMDS[0])
-    adr = lambda at, target: 0xE28F0000 | (target - (at + 8))  # ADD r0,pc,#offset
-    code = [
-        0,                # start
-        0x1C,             # init
-        0,                # final
-        0x40,             # service
-        title_at,         # title
-        help_at,          # help
-        0,                # commands
-        # init
-        0xE92D4000,       # STMFD sp!,{lr}
-        0xE3A0050F,       # MOV r0,#PACK_BASE
-        0xEF061B40,       # SWI XResourceFS_RegisterFiles
-        adr(0x28, cmd1),  # ADR r0,cmd1
-        0xEF020005,       # SWI XOS_CLI
-        adr(0x30, cmd2),  # ADR r0,cmd2
-        0xEF020005,       # SWI XOS_CLI
-        0xE1500000,       # CMP r0,r0 (a failure must not fail the boot)
-        0xE8BD8000,       # LDMFD sp!,{pc}
-        # service
-        0xE3510060,       # CMP r1,#&60 (Service_ResourceFSStarting)
-        0x11A0F00E,       # MOVNE pc,lr
-        0xE92D4001,       # STMFD sp!,{r0,lr}
-        0xE3A0050F,       # MOV r0,#PACK_BASE
-        0xE1A0E00F,       # MOV lr,pc
-        0xE1A0F002,       # MOV pc,r2
-        0xE8BD8001,       # LDMFD sp!,{r0,pc}
-        0,                # end of service
-    ]
-    assert len(code) == code_words and cmd2 - 0x38 < 256
-    body = struct.pack(f"<{len(code)}I", *code) + bytes(4)
-    body += title + help_text + SCRAP_CMDS[0] + SCRAP_CMDS[1]
-    return body + bytes(-len(body) & 3)
+    """Registers the pack, the printer dumper and the scrap variables !Scrap would set.
+
+    Also answers ResourceFS restarting. The dumper is a veneer PDriverDP calls with a
+    reason in r11. Colours are PDumperSupport's, as in PDumperDM, and for 1 bit strips
+    that's just arithmetic. We skip its StartJob, which insists on a palette file off
+    a printer definition disc. The rest goes to src/net.c, which says 1 to be called
+    again while the ring drains.
+    It registers in init because PDumperDM just took this same path, so boot stays
+    free of overlays.
+    """
+    title = b"DreamApps\0"
+    help_text = b"DreamApps\t0.03 (1 Nov 2026)\0"
+    body = assemble([
+        0,                 # start
+        offset("init"),
+        0,                 # final
+        offset("service"),
+        offset("title"),
+        offset("help"),
+        0,                 # commands
+        "init",
+        0xE92D4100,        # STMFD sp!,{r8,lr}
+        0xE3A0050F,        # MOV r0,#PACK_BASE
+        0xEF061B40,        # SWI XResourceFS_RegisterFiles
+        adr(0, "cmd1"),    # ADR r0,cmd1
+        0xEF020005,        # SWI XOS_CLI
+        adr(0, "cmd2"),    # ADR r0,cmd2
+        0xEF020005,        # SWI XOS_CLI
+        0xE3A00102,        # MOV r0,#&80000000 (add a dumper)
+        0xE3A01000 | DUMPER_NUMBER,  # MOV r1,#number
+        0xE3A02F00 | PDRIVER_VERSION >> 2,  # MOV r2,#version
+        0xE3A03000,        # MOV r3,#0
+        adr(4, "dumper"),  # ADR r4,dumper
+        0xE3A050FF,        # MOV r5,#255 (branches)
+        0xE3A06007,        # MOV r6,#7 (strip types)
+        0xE3A08000 | PDRIVER_DP,  # MOV r8,#PDriverDP
+        0xEF0A015B,        # SWI XPDriver_MiscOpForDriver
+        0xE1500000,        # CMP r0,r0 (a failure must not fail the boot)
+        0xE8BD8100,        # LDMFD sp!,{r8,pc}
+        "cmd1",
+        SCRAP_CMDS[0],
+        "cmd2",
+        SCRAP_CMDS[1],
+        "service",
+        0xE3510060,        # CMP r1,#&60 (Service_ResourceFSStarting)
+        0x11A0F00E,        # MOVNE pc,lr
+        0xE92D4001,        # STMFD sp!,{r0,lr}
+        0xE3A0050F,        # MOV r0,#PACK_BASE
+        0xE1A0E00F,        # MOV lr,pc
+        0xE1A0F002,        # MOV pc,r2
+        0xE8BD8001,        # LDMFD sp!,{r0,pc}
+        "dumper",
+        0xE33B0002,        # TEQ r11,#2
+        branch(EQ, "colour"),
+        0xE92D4001,        # STMFD sp!,{r0,lr}
+        "again",
+        0xE59D0000,        # LDR r0,[sp]
+        XDREAM_PRINT_DUMP, # SWI XDreamNet_PrintDump
+        0xE3500001,        # CMP r0,#1
+        branch(EQ, "again"),
+        branch(HI, "failed"),
+        0xE8FD8001,        # LDMFD sp!,{r0,pc}^
+        "failed",
+        adr(0, "error"),   # ADR r0,error
+        0xE28DD004,        # ADD sp,sp,#4
+        0xE8BD4000,        # LDMFD sp!,{lr}
+        0xE39EF201,        # ORRS pc,lr,#V
+        "colour",
+        0xE92D4C07,        # STMFD sp!,{r0-r2,r10,r11,lr}
+        0xE1A01000,        # MOV r1,r0
+        0xE1A00003,        # MOV r0,r3
+        0xEF061B06,        # SWI XPDumper_SetColour
+        branch(VS, "bad"),
+        0xE8FD8C07,        # LDMFD sp!,{r0-r2,r10,r11,pc}^
+        "bad",
+        0xE28DD004,        # ADD sp,sp,#4
+        0xE8BD4C06,        # LDMFD sp!,{r1,r2,r10,r11,lr}
+        0xE39EF201,        # ORRS pc,lr,#V
+        0,                 # end of service
+        "error",
+        0x00CDC000,        # error number
+        PRINT_ERROR,
+        "title",
+        title,
+        "help",
+        help_text,
+    ])
+    return body
 
 
 def patch_rom(rom):
@@ -169,6 +262,8 @@ def patch_rom(rom):
     if word(rom, last + word(rom, last)) != 0 or rom[MODULE_AT:ROM_END] != b"\xff" * (ROM_END - MODULE_AT):
         sys.exit("this ROM's layout is not the expected 3.11 image")
     module = arm_module()
+    if MODULE_AT + 8 + len(module) > ROM_END:
+        sys.exit(f"the module is {len(module)} bytes, too big for the gap")
     struct.pack_into("<I", rom, last, MODULE_AT - last)
     rom[MODULE_AT:MODULE_AT + 4 + len(module) + 4] = struct.pack("<I", len(module) + 4) + module + bytes(4)
     return bytes(rom)

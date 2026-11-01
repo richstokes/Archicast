@@ -1,0 +1,4 @@
+IconSprites <Obey$Dir>.!Sprites
+Set NetPrint$Dir <Obey$Dir>
+WimpSlot -min 64K -max 64K
+Run <NetPrint$Dir>.!RunImage

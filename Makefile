@@ -42,7 +42,7 @@ $(HOSTOBJ)/main.o: src/host/main.c src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
-$(HOSTOBJ)/net.o: src/net.c src/net.h src/cpu.h
+$(HOSTOBJ)/net.o: src/net.c src/net.h src/print.h src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
@@ -54,13 +54,17 @@ $(HOSTOBJ)/web.o: src/web.c src/web.h src/net.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
-$(HOSTOBJ)/net_host.o: src/host/net.c src/net.h src/cpu.h
+$(HOSTOBJ)/print.o: src/print.c src/print.h src/net.h src/web.h
+	@mkdir -p $(HOSTOBJ)
+	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
+
+$(HOSTOBJ)/net_host.o: src/host/net.c src/net.h src/print.h src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
 host: build/dreamrisc-host
 
-build/dreamrisc-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o
+build/dreamrisc-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o
 	$(HOSTCC) -o $@ $^
 
 # Experiment: harnesses with the ARM interpreter. dreamrisc-interp falls back to it for
@@ -68,7 +72,7 @@ build/dreamrisc-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)
 # The Dreamcast build carries the ARM interpreter, which anything loaded off a
 # disc runs through, including the whole software archive. INTERP= leaves it out.
 INTERP ?= 1
-INTERP_OBJ = $(filter-out $(HOSTOBJ)/mach.o,$(XLAT_HOST) $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o)
+INTERP_OBJ = $(filter-out $(HOSTOBJ)/mach.o,$(XLAT_HOST) $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o)
 
 build/dreamrisc-interp: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -c src/mach.c -o $(HOSTOBJ)/mach_i.o
@@ -124,7 +128,7 @@ $(DCOBJ)/main.o: src/dc/main.c src/cpu.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) $(if $(INTERP),-DARM_INTERP) $(if $(HW_NO_SD),-DHW_NO_SD) $(if $(HW_AUTOFORMAT),-DHW_AUTOFORMAT) $(if $(HW_LOG),-DHW_LOG '-DPC_ROOT="$(CURDIR)/build/disc"') $(if $(HW_REPLAY),-DHW_REPLAY -Ibuild) $(if $(HW_DUMP),-DHW_DUMP) -c $< -o $@
 
-$(DCOBJ)/net.o: src/net.c src/net.h src/web.h src/cpu.h
+$(DCOBJ)/net.o: src/net.c src/net.h src/print.h src/web.h src/cpu.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -c $< -o $@
 
@@ -136,11 +140,15 @@ $(DCOBJ)/web.o: src/web.c src/web.h src/net.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -c $< -o $@
 
+$(DCOBJ)/print.o: src/print.c src/print.h src/net.h src/web.h
+	@mkdir -p $(DCOBJ)
+	$(KOS_CC) $(DCFLAGS) -c $< -o $@
+
 $(DCOBJ)/tls.o: src/dc/tls.c src/web.h src/net.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -I$(KOS_PORTS)/include -c $< -o $@
 
-$(DCOBJ)/net_dc.o: src/dc/net.c src/net.h
+$(DCOBJ)/net_dc.o: src/dc/net.c src/net.h src/print.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -I$(KOS_BASE)/addons/include -c $< -o $@
 
@@ -150,7 +158,7 @@ $(DCOBJ)/images.o: src/dc/images.S assets/cmos.bin
 
 dc: build/dreamrisc.elf $(OV_DC)
 
-build/dreamrisc.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
+build/dreamrisc.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/print.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
 	kos-cc -o $@ $^ -lppp -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--wrap=realloc -Wl,-Map,build/dreamrisc.map
 
 # The Archimedes software archive as an ADFS hard disc, streamed off the CD.

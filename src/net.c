@@ -6,6 +6,7 @@
 #include <string.h>
 #include "cpu.h"
 #include "net.h"
+#include "print.h"
 #include "web.h"
 
 enum {
@@ -13,7 +14,8 @@ enum {
 	DN_RESOLVE_RESULT, DN_GET_CONFIG, DN_SAVE_CONFIG, DN_SOCK_OPEN, DN_SOCK_BIND,
 	DN_SOCK_CONNECT, DN_SOCK_SEND, DN_SOCK_RECV, DN_SOCK_SENDTO, DN_SOCK_RECVFROM,
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
-	DN_WEB_FIELD_SET,
+	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
+	DN_PRINT_STATUS,
 };
 
 #define ERR_INVAL 22
@@ -110,6 +112,59 @@ static s32 sock_transfer(u32 op)
 	return got;
 }
 
+/* The dumper's reason codes, from PDriverDP in r11 */
+enum { DUMP_SET_DRIVER, DUMP_OUTPUT, DUMP_COLOUR_SET, DUMP_START_PAGE, DUMP_END_PAGE, DUMP_START_JOB, DUMP_TIDY_JOB };
+
+/* One strip, as much as the ring has room for. r0 is the sprite data, r3 the width in
+ * pixels, r4 the rows and r5 the bytes per row. The veneer calls again until it's all gone. */
+static s32 print_strip(void)
+{
+	static u8 row[320];
+	static u32 rows_done;
+	u32 width = R(3), rows = R(4), stride = R(5);
+	u32 bytes = (width + 7) >> 3;
+	if (bytes > sizeof(row))
+		bytes = sizeof(row);
+	while (rows_done < rows) {
+		if (!print_row_ready())
+			return PRINT_WAIT;
+		guest_read(R(0) + rows_done * stride, row, bytes);
+		print_row(row, (int)(bytes * 8 < width ? bytes * 8 : width));
+		rows_done++;
+	}
+	rows_done = 0;
+	return PRINT_OK;
+}
+
+/* Called by the dumper veneer in the DreamApps module, with PDriverDP's registers */
+static s32 print_dump(void)
+{
+	s32 result = PRINT_OK;
+	switch (R(11)) {
+	case DUMP_START_JOB:
+		result = print_job_start();
+		break;
+	case DUMP_START_PAGE:
+		/* PDriverDP takes r3 back as rows it should still send blank */
+		result = print_page_start((int)R(3), (int)R(6));
+		if (result == PRINT_OK)
+			R(3) = 0;
+		break;
+	case DUMP_OUTPUT:
+		result = print_strip();
+		break;
+	case DUMP_END_PAGE:
+		result = print_page_end();
+		break;
+	case DUMP_TIDY_JOB:
+		result = print_job_end(R(3) != 0);
+		break;
+	}
+	if (result == PRINT_WAIT)
+		plat_sleep_ms(1); /* the worker needs the CPU, and this is a retry loop */
+	return result;
+}
+
 void net_swi(u32 op)
 {
 	static net_status_t status;
@@ -118,6 +173,8 @@ void net_swi(u32 op)
 	static char url[192];
 	static web_info_t info;
 	static u8 line[512];
+	static print_config_t print_config;
+	static print_status_t print_state;
 	u8 ip[4];
 	u32 a, b;
 	s32 result = 0;
@@ -224,6 +281,33 @@ void net_swi(u32 op)
 	case DN_WEB_FIELD_SET:
 		guest_string(R(0), url, sizeof(url));
 		web_field_set(url);
+		break;
+	case DN_PRINT_DUMP:
+		result = print_dump();
+		break;
+	case DN_PRINT_GET_CONFIG:
+		print_get_config(&print_config);
+		guest_write(R(0), &print_config, sizeof(print_config));
+		break;
+	case DN_PRINT_SET_CONFIG:
+		guest_read(R(0), &print_config, sizeof(print_config));
+		if (print_config.paper >= PAPER_COUNT)
+			result = -ERR_INVAL;
+		else
+			print_set_config(&print_config);
+		break;
+	case DN_PRINT_SAVE_CONFIG:
+		guest_read(R(0), &print_config, sizeof(print_config));
+		if (print_config.paper >= PAPER_COUNT) {
+			result = -ERR_INVAL;
+		} else {
+			print_set_config(&print_config);
+			result = plat_print_save(&print_config);
+		}
+		break;
+	case DN_PRINT_STATUS:
+		print_status(&print_state);
+		guest_write(R(0), &print_state, sizeof(print_state));
 		break;
 	default:
 		result = -ERR_INVAL;

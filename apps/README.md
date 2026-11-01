@@ -35,3 +35,9 @@ Of note is that `adfs/Code/TetrisCode` upstream is a different build from the on
 Demos are plain Logo text in `logo/Demos`. Add one by listing it in `app.json` and in the `DATA` line under `PROCmenus`. A different count also means changing `DN$`, the loop there and the menu size.
 
 Watch out for `FOR`, which always runs once in BBC BASIC, and for anything live across an allocation, which has to be on `VS%` or the collector frees it. `tools/basic.py` matches keywords as prefixes like BASIC does, so a variable can't start with one (hence `zRUN%`), and it knows `TIME` only as a value.
+
+## NetPrint
+
+`!NetPrint` is BASIC as well, and does the job of `!Printers`, which needs printer definitions off a disc we don't have. It has to stay running: `!Edit` and `!Draw` won't print unless a printer manager answers them on the Wimp. See Printing in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
+`tools/basic.py` knows no `PTR#`, in either form, so file positions go through `OS_Args`.

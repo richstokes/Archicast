@@ -3,11 +3,13 @@
  * answers pings from every address except x.x.x.254. Sockets are the Mac's own. */
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../cpu.h"
 #include <time.h>
 #include <unistd.h>
 #include "../net.h"
+#include "../print.h"
 #include "../web.h"
 
 #define UP_DELAY_US 3000000u
@@ -40,6 +42,23 @@ void plat_net_init(void)
 	 * as reading it advances virtual time, which would move every other checksum. */
 	say(NET_CONNECTING, "Asking for an address");
 	up_at = UP_DELAY_US;
+}
+
+/* No VMU here. DREAM_PRINTER stands in for one, so tests can name a server. */
+int plat_print_load(print_config_t *c)
+{
+	const char *host = getenv("DREAM_PRINTER");
+	if (!host)
+		return 0;
+	memset(c, 0, sizeof(*c));
+	snprintf(c->host, sizeof(c->host), "%s", host);
+	return 1;
+}
+
+int plat_print_save(const print_config_t *c)
+{
+	(void)c;
+	return 0;
 }
 
 void plat_sock_tune(int fd)

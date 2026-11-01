@@ -18,9 +18,12 @@
 #include <unistd.h>
 #include <string.h>
 #include "../net.h"
+#include "../print.h"
 
 #define CONFIG_NAME "DRISCNET"
 #define CONFIG_MAGIC 0x31544E44u
+#define PRINT_CONFIG_NAME "DRISCPRN"
+#define PRINT_CONFIG_MAGIC 0x31525044u
 #define WORKER_STACK 0x8000
 #define IDLE_MS 20
 
@@ -416,6 +419,49 @@ int plat_net_save_config(const net_config_t *c)
 	if (!config_path(path, sizeof(path), 0))
 		return -1;
 	saved.magic = CONFIG_MAGIC;
+	memcpy(&saved.config, c, sizeof(*c));
+	f = fs_open(path, O_WRONLY);
+	if (f == FILEHND_INVALID)
+		return -1;
+	put = fs_write(f, &saved, sizeof(saved));
+	fs_close(f);
+	return put == sizeof(saved) ? 0 : -1;
+}
+
+int plat_print_load(print_config_t *c)
+{
+	struct { uint32_t magic; print_config_t config; } saved;
+	maple_device_t *dev;
+	char path[32];
+	int unit;
+	for (unit = 0; (dev = maple_enum_type(unit, MAPLE_FUNC_MEMCARD)); unit++) {
+		file_t f;
+		ssize_t got;
+		snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, PRINT_CONFIG_NAME);
+		f = fs_open(path, O_RDONLY);
+		if (f == FILEHND_INVALID)
+			continue;
+		got = fs_read(f, &saved, sizeof(saved));
+		fs_close(f);
+		if (got == sizeof(saved) && saved.magic == PRINT_CONFIG_MAGIC) {
+			memcpy(c, &saved.config, sizeof(*c));
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int plat_print_save(const print_config_t *c)
+{
+	struct { uint32_t magic; print_config_t config; } saved;
+	maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
+	char path[32];
+	file_t f;
+	ssize_t put;
+	if (!dev)
+		return -1;
+	snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, PRINT_CONFIG_NAME);
+	saved.magic = PRINT_CONFIG_MAGIC;
 	memcpy(&saved.config, c, sizeof(*c));
 	f = fs_open(path, O_WRONLY);
 	if (f == FILEHND_INVALID)

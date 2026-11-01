@@ -1,0 +1,75 @@
+# Draw a few shapes in !Draw, then print them through !NetPrint. Needs DREAM_PRINTER.
+70 move -1000 1000
+74 move 55 -23
+76 button 1
+76.2 button 0
+84 move -1000 1000
+84 key 0 12 1
+84.1 key 0 12 0
+85 type filer_run resources:$.apps.!draw\n
+88 move 33 -249
+89 key 4 7 1
+89.1 key 4 7 0
+105 move -1000 1000
+106.5 move 355 -20
+108 button 1
+108.15 button 0
+120 move -1000 1000
+121.5 move 100 -260
+122 button 1
+122.15 button 0
+124 move -1000 1000
+125.5 move 200 -180
+126 button 1
+126.15 button 0
+128 move -1000 1000
+129.5 move 280 -260
+130 button 1
+130.15 button 0
+130.3 button 1
+130.45 button 0
+134 move -1000 1000
+135.5 move 21 -173
+136 button 1
+136.15 button 0
+138 move -1000 1000
+139.5 move 80 -220
+140 button 1
+140.15 button 0
+142 move -1000 1000
+143.5 move 173 -140
+144 button 1
+144.15 button 0
+146 move -1000 1000
+147.5 move 21 -193
+148 button 1
+148.15 button 0
+150 move -1000 1000
+151.5 move 80 -220
+152 button 1
+152.15 button 0
+154 move -1000 1000
+155.5 move 173 -140
+156 button 1
+156.15 button 0
+159 key 0 12 1
+159.1 key 0 12 0
+162 type filer_run resources:$.apps.!netprint\n
+167 key 4 7 1
+167.1 key 4 7 0
+176 move -1000 1000
+177.5 move 99 -219
+178 button 4
+178.1 button 0
+180 move -1000 1000
+181.5 move 233 -259
+182 button 2
+182.1 button 0
+185 move 65 2
+186.5 move 1 1
+188.5 move 1 0
+191 move 25 43
+192.5 button 1
+192.6 button 0
+198 shot build/nd2.ppm
+270 shot build/nd3.ppm
