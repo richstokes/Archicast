@@ -4,7 +4,7 @@ RISC OS 3.11 running natively on the Sega Dreamcast, built on KallistiOS.
 
 **This is not an emulator and there is no JIT.** The Acorn ROM is ARM code with no public source, so a tool recompiles it ahead of time into C and then SH-4. The ELF holds the native code, and the original hardware pokes land in native drivers.
 
-It's a hybrid, though. The base ROM and bundled apps run as native SH-4 code, and a small interpreter handles legacy ARM software that hasn't been recompiled, like the titles on the archive disc.
+It's also backward compatible with real Archimedes software. The ROM and bundled apps run as native SH-4, and anything without a recompiled block drops into a built-in ARM interpreter, with nothing for the user to launch or configure. Original binaries run unmodified from their disk images, and their RISC OS calls still land in the native ROM. The archive disc carries 261 titles this way, and Lemmings, Elite and Populous have all run from it on a real Dreamcast.
 
 <table>
   <tr>
