@@ -4,6 +4,8 @@ RISC OS 3.11 running natively on the Sega Dreamcast, built on KallistiOS.
 
 **This is not an emulator and there is no JIT.** The Acorn ROM is ARM code with no public source, so a tool recompiles it ahead of time into C and then SH-4. The ELF holds the native code, and the original hardware pokes land in native drivers.
 
+It's a hybrid, though. The base ROM and bundled apps run as native SH-4 code, and a small interpreter handles legacy ARM software that hasn't been recompiled, like the titles on the archive disc.
+
 <table>
   <tr>
     <td><img src="docs/desktop-apps.png" alt="RISC OS desktop with the Apps folder and the !Chars window open"></td>
