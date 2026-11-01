@@ -140,6 +140,8 @@ A `!Sprites` of type FF9 that isn't sprite data gets a `Bad sprite file` box fro
 
 The interpreter models one piece of the ARM pipeline for this software: a word store over the next instruction leaves the old instruction to run, which Elite's decrypter depends on.
 
+Floppy software often names its own disc (`adfs::0.!Sp_Spell`), which fails from a hard disc. `relocate` rewrites those paths to the title's folder in Obey, Exec and BASIC files, ~90 of them, but only when the next name in the path exists there. Paths in compiled code can't change length so they stay, and Chocks Away still says `Drive empty`.
+
 Most of the No-Intro set and some of TOSEC are JFD, a track dump that keeps copy protection. `read_jfd` takes the standard sectors by id and records which are missing, and a file on a missing sector counts as damage. Gods came through that way and runs, but anything that checks its protection at runtime will fail, as `fdc.c` has no protected tracks to show it.
 
 `tools/adfs.py` writes the same new-map layout as `hdformat.c`, with the files in place. Things FileCore insists on, each found the hard way with `*CheckMap`:

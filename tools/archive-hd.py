@@ -47,6 +47,8 @@ CACHE = "/tmp/archimedes-archive"
 SOURCES = ("TOSEC-Acorn", "No-Intro_AA", "20240825_20240825_0053", "netmanyagi_acorn-archimedes", "Acron-Archimedes")
 FOLDERS = {"Applications": "Apps", "Educational": "Apps", "Miscellaneous": "Apps", "Games": "Games",
            "Demos": "Demos", "Compilations": "Compilatns"}
+# A floppy path: drive 0 or a disc by name, optionally through $, then the next name
+FLOPPY_PATH = re.compile(rb"(?i)(?:adfs::[a-z0-9_-]+|(?:adfs:)?:0)\.(?:\$\.)?()([!a-z0-9_]+)")
 # Filed under Games by the collections that carry them
 APPS = re.compile(r"^(impression|pen down|startwrite|the hacker|hacker, the|desktophacker|coconizer|alps)", re.I)
 SKIP = re.compile(r"blank \d+k|catalogue|boot floppy|fileserver|^zzz", re.I)  # not software to run
@@ -272,6 +274,44 @@ def merge(dest, src, into_disk=None):
             dest.subdir(into_disk).add(child)
 
 
+def rewrite_path(data, root, names):
+    """data with floppy paths into this title pointed at its folder on the hard disc."""
+    def swap(m):
+        return root + b"." + m.group(2) if m.group(2).lower() in names else m.group(0)
+    return FLOPPY_PATH.sub(swap, data)
+
+
+def rewrite_basic(data, root, names):
+    """The same inside a tokenised BASIC program, keeping each line's length byte."""
+    out = bytearray()
+    at = 0
+    while at + 3 < len(data) and data[at] == 13 and data[at + 1] != 0xFF and data[at + 3] >= 4:
+        size = data[at + 3]
+        body = rewrite_path(data[at + 4:at + size], root, names)
+        if len(body) + 4 > 255:  # no room: this line keeps its floppy path
+            body = data[at + 4:at + size]
+        out += data[at:at + 3] + bytes([len(body) + 4]) + body
+        at += size
+    return bytes(out) + data[at:]
+
+
+def relocate(title, path):
+    """Floppies assume they are drive 0. Point their Obey, Exec and BASIC files at the
+    title's folder instead, when the path leads to something in it. Paths inside
+    compiled code keep pointing at the floppy, as they cannot change length."""
+    root = ("adfs::%s.$.%s" % (DISC_NAME, path)).encode("latin-1")
+    names = {c.name.lower().encode("latin-1") for c in title.children.values()}
+    moved = 0
+    for _, e in title.walk():
+        kind = (e.load >> 8) & 0xFFF if e.load >> 20 == 0xFFF else None
+        if e.is_dir or kind not in (0xFEB, 0xFFE, 0xFFB):
+            continue
+        new = rewrite_basic(e.data, root, names) if kind == 0xFFB else rewrite_path(e.data, root, names)
+        moved += new != e.data
+        e.data = new
+    return moved
+
+
 def split_big(folder):
     """Directories hold 77 entries; past that, titles go under alphabetical ranges."""
     if len(folder.children) <= adfs.DIR_ENTRIES:
@@ -385,6 +425,7 @@ def main():
     if args.limit:
         chosen = chosen[:args.limit]
     done = 0
+    bundled = set()
     for folder, title, disks, stems in chosen:
         name = folder_name(title, taken.setdefault(folder, set()))
         dest = adfs.Entry(name, attrs=0x08)
@@ -393,10 +434,16 @@ def main():
             sanitise(tree)
             merge(dest, tree, "Disk%d" % disk if disk else None)
         root.subdir(folder).add(dest)
+        bundled.add(id(dest))
         readme.append("%s.%s: %s" % (folder, name, "; ".join(stems)))
         done += 1
     for folder in root.children.values():
         split_big(folder)
+    moved = 0
+    for path, entry in list(root.walk()):
+        if id(entry) in bundled:
+            moved += relocate(entry, path)
+    print("  rewrote floppy paths in %d files" % moved, file=sys.stderr)
     text = ("\n".join(readme) + "\n").encode("latin-1", "replace")
     root.add(adfs.Entry("ReadMe", 0xFFFFFFFF, 0, 0x13, text))
 
