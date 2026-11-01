@@ -17,6 +17,10 @@ The split pays off in performance: the OS and anything built into the image run 
     <td><img src="docs/web.png" alt="The !Web browser on its home page"></td>
     <td><img src="docs/lander.png" alt="Lander, with the terrain in view"></td>
   </tr>
+  <tr>
+    <td><img src="docs/pendown.png" alt="Pen Down 1.72 with a short document open"></td>
+    <td><img src="docs/populous.png" alt="Populous, with two walkers on the land"></td>
+  </tr>
 </table>
 
 ## Status
