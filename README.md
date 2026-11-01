@@ -17,22 +17,17 @@ RISC OS 3.11 running natively on the Sega Dreamcast, built on KallistiOS.
 
 ## Status
 
-- **Runs on a real Dreamcast**: boots to the desktop in ~26-31s, with screen memory checksums matching the Mac harness exactly
-- A scripted run on the console opens a Filer window and launches `!Calc`, `!Chars` and `!Edit`, again matching the harness at every checkpoint
+- **Runs on a real Dreamcast**: boots to the desktop in ~26-31s, and a scripted run opens the Filer and launches `!Calc`, `!Chars` and `!Edit`, matching the Mac harness at every checkpoint
 - Known issue: 1 of 9 console boots stuck before the desktop. Not reproduced since, cause unknown
-- Physical keyboard, mouse and controller are untested on hardware, and nobody has looked at the real video output yet
-- **Hard disc on SD**: with an SD card on the serial port adapter, RISC OS gets a real ADFS hard disc at `:4`, up to ~476MB. Saves survive power off. **Formatting erases the whole card**, and the first boot asks first (A/Y to format, B/N to skip)
-- With no card, floppy `:0` holds an ADFS E disc called DreamRISC. Saves there are lost at power off
-- **Software archive**: the build bundles Archimedes software from five archive.org collections, deduplicated by content (261 titles: games, apps, demos, compilations), as a read-only ADFS hard disc called `Archive`, streamed off the CD. It mounts as `:4`, or `:5` with an SD card. The original ARM code runs through the interpreter in `src/interp.c`. About a dozen have been launched on the harness, including Lemmings, Elite, Populous, Pen Down, Impression Jr and Maestro; the rest are untested. Elite is there twice, and only the copy in `Games.2-C.Archimedes` skips the manual word check. Most of these titles are commercial, so images built with the archive should not be published. Anything that insists on its floppy (Chocks Away says `Drive empty`) or checks copy protection won't run. `scripts/build-dc.sh --include-archive-software off` leaves it out
-- The desktop runs in mode 27, a true 640x480 in 16 colours. Lower resolution modes, like Lander's, are still stretched to fit
-- Sound plays through the AICA: beeps, BASIC's `SOUND` and anything else using the RISC OS sound system. Checked by recording it on the harness and by ring counters in Flycast; nobody has listened to it on a console yet
-- `!Draw` and `!Paint` load on demand from disc as code overlays, and rarely used ROM pages stream too. Verified on real hardware over dcload and from a disc image in Flycast; reading a real disc on the console is untested
-- **Lander** is in the Apps folder, recompiled from its ARM binary and streamed from disc when launched. Locked 25 frames/s on the console, played by script only so far
-- **Tertis** (SICK, 1993) is in there too, same treatment. Played by script on the harness and in Flycast, not yet on real hardware
-- **Network**: `!Ping` and `!NetSetup` are in the Apps folder. A Broadband or LAN Adapter comes up by itself with DHCP; the modem (DreamPi) and W5500 are picked in `!NetSetup`. BBA and modem work in Flycast. On a real BBA under dcload the stack pinged the gateway at 2-3ms, but launching `!Ping` by script was unreliable there; not yet tried without dcload
-- **Web**: `!Web` in the Apps folder is a small text browser with HTTP, HTTPS, forms and search. Google, DuckDuckGo, Hacker News and Wikipedia work in Flycast, and real sites have loaded on a console, but the window and a fetch have only run together in Flycast and on the harness. HTTPS is encrypted but certificates are not verified, so don't use it for anything private
-- **Logo** is in the Apps folder too: a windowed turtle graphics language with six demos, written in BBC BASIC so it runs on the ROM's own recompiled BASIC
-- Memory: ~14.7MB of 16MB with a card (8.8MB ELF, ~1.9MB ROM cache, 4MB guest RAM). The floppy image only keeps sectors with data, ~10KB as shipped
+- Untested on a console so far: physical keyboard, mouse and controller, real video output, sound and reading a real disc
+- **Display**: the desktop runs in mode 27, a true 640x480 in 16 colours. Lower resolution modes, like Lander's, are stretched to fit
+- **Sound** plays through the AICA, covering beeps, BASIC's `SOUND` and anything else using the RISC OS sound system
+- **Storage**: an SD card on the serial port adapter becomes an ADFS hard disc at `:4`, up to ~476MB, and saves survive power off. **Formatting erases the whole card**; the first boot asks first (A/Y to format, B/N to skip). With no card, saves go to floppy `:0` and are lost at power off
+- **Software archive**: 261 Archimedes games, apps, demos and compilations from archive.org, on a read-only hard disc called `Archive` at `:4`, or `:5` with an SD card. They run through an interpreter. About a dozen have been launched, including Lemmings, Elite, Populous and Maestro; the rest are untested. Anything that needs its floppy or checks copy protection won't run. **Most of these titles are commercial, so don't publish images built with the archive**
+- **Apps folder**: `!Draw`, `!Paint`, Lander, Tertis (SICK, 1993) and Logo, a turtle graphics language with six demos. Lander holds 25 frames/s on the console. Lander and Tertis have only been played by script
+- **Network**: `!Ping` and `!NetSetup`. A Broadband or LAN Adapter comes up by itself with DHCP; the modem (DreamPi) and W5500 are picked in `!NetSetup`. BBA and modem work in Flycast. A real BBA has pinged the gateway under dcload, not yet without it
+- **Web**: `!Web` is a small text browser with HTTP, HTTPS, forms and search. Google, DuckDuckGo, Hacker News and Wikipedia work in Flycast, and real sites have loaded on a console. HTTPS is encrypted but certificates are not verified, so don't use it for anything private
+- Memory: ~14.7MB of 16MB used with a card
 
 ## Build
 
@@ -55,7 +50,7 @@ Host tools: KallistiOS, Python 3, meson, ninja, pkg-config and libisofs (`brew i
 scripts/build-dc.sh
 ```
 
-The archive software is on by default (`--include-archive-software on|off`). The first build downloads ~600MB from archive.org, one file at a time, into `/tmp/archimedes-archive`, where it stays cached (macOS may clear `/tmp` on reboot), and `tools/archive-hd.py` unpacks the floppies into `build/archive.hd`, ~230MB. One collection is 7z, so with no `7z` tool on the path `py7zr` is installed into `build/pydeps`. `build/archive.hd.txt` maps each folder on the disc back to its archive name.
+The first build downloads ~600MB of archive software from archive.org. To leave it out, pass `--include-archive-software off`.
 
 ```bash
 scripts/run-flycast.sh
