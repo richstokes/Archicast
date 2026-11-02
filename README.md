@@ -59,6 +59,9 @@ scripts/build-dc.sh
 
 The first build downloads ~600MB of archive software from archive.org. To leave it out, pass `--include-archive-software off`.
 
+
+## Run in Flycast emulator
+
 ```bash
 scripts/run-flycast.sh
 ```
@@ -66,5 +69,8 @@ scripts/run-flycast.sh
 `scripts/stop-flycast.sh` stops only the instance this checkout launched.
 
 Controls: mouse left/right/middle are Select/Menu/Adjust. On a controller, stick or D-pad moves the pointer, A/B/X are Select/Menu/Adjust, Start is Escape and Y is Return.
+
+
+## Further reading
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works and how to test it.
