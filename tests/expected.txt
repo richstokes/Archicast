@@ -1,9 +1,9 @@
 tests/apps.replay 136 6E061FAD
-tests/overlays.replay 126 D2154F2E
+tests/overlays.replay 126 B09C75EE
 tests/draw.replay 182 7CB7EE71
 tests/adfs-open.replay 94 D8AB0E13 build/test.adf
 tests/lander.replay 122 2F841B90
-tests/lander-exit.replay 156 A6E49414
+tests/lander-exit.replay 156 633425BC
 tests/sound.replay 97 C98FE5E6
 tests/hd.replay 180 4ABE53F1 - build/test-hd.img
 tests/ping.replay 102 DFCA821F
@@ -14,7 +14,7 @@ tests/web.replay 98 061A0C74
 tests/logo-lang.replay 772 2446DDDD build/test.adf
 tests/logo-ui.replay 196 DE19674D
 tests/web-iconbar.replay 124 2B252EB9
-tests/drag.replay 107 3418EF44
+tests/drag.replay 107 519B60F4
 tests/taskwindow.replay 94 93FE9DB4
 tests/menus.replay 217 E9667B45
 tests/configure.replay 124 60C11776
