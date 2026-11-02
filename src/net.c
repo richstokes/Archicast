@@ -1,5 +1,5 @@
 /* DreamNet SWIs: how RISC OS programs reach the native network stack. RISC OS 3.11
- * has no TCP/IP in ROM and Acorn's Internet module is an ARM binary we cannot run,
+ * has no TCP/IP in ROM and Acorn's Internet module is an ARM binary we do not recompile,
  * so BASIC programs call these directly. They are caught in swi_insn before the
  * kernel sees them. Results come back in r0 as a value or -errno; only the X form
  * exists, since there is nowhere to build an error block for the kernel. */

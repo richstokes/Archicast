@@ -4,6 +4,8 @@
 
 Dream-TOS could compile EmuTOS because it is C. RISC OS 3.11 only exists as 2MB of 26-bit ARM code, and the goal is a native port with no emulator or JIT.
 
+11/1 update: that still holds for RISC OS and bundled apps, and there is still no JIT. Legacy software from disc is the one exception, and it runs through an ARM interpreter. See [Code that runs from RAM](#code-that-runs-from-ram).
+
 ## Proposal
 
 1. `tools/romscan.py` maps the ROM (kernel plus 88 modules) and finds code
@@ -15,15 +17,17 @@ Dream-TOS could compile EmuTOS because it is C. RISC OS 3.11 only exists as 2MB 
 
 Boot traces come from a dev-only hook in Arculator (`ARC_PCMAP`). Static discovery adds module entry points, command tables, ADR targets, jump tables, stored ROM addresses and `lr`-saving prologues. Network and printer modules are skipped unless a trace proves they run.
 
-A jump to code that was not recompiled stops the harness with its address. `tools/converge.sh` turns those stops into `trace/seeds.txt` and `trace/ramwords.txt`. On the console it raises a prefetch abort, so RISC OS reports an error and only the task dies.
+A jump to code that was not recompiled stops the harness with its address. `tools/converge.sh` turns those stops into `trace/seeds.txt` and `trace/ramwords.txt`. Builds with the interpreter fall back to it instead, which is the Dreamcast default. With `INTERP=` the console raises a prefetch abort, so RISC OS reports an error and only the task dies.
 
 ## Code that runs from RAM
 
 RISC OS copies and generates a little code at runtime (the IRQ head, SWI stubs, sound voices, BASIC's `SYS`, SharedCLibrary branch tables).
 
-Each known instruction word gets one precompiled routine that takes its PC as an argument, looked up by word. SWI words, branch words and the `LDMIA r12!,{list}` that C apps build on the stack for SWI veneers share a routine each, since those read the word for their number, offset or register list.
+`src/interp.c` runs all of it, apart from recompiled apps. It fetches, decodes and executes one ARM instruction at a time, and shares machine state with recompiled code, so SWIs from a game land in the native ROM. It also catches ROM paths the static scan missed. The Dreamcast build carries it by default, and it's why unmodified Archimedes binaries run from disc.
 
-**This is the part closest to an emulator, so to be plain about it:** RAM code runs one routine per instruction through a table lookup, and those three routines do read the instruction word. Nothing is generated at runtime, and unknown words do not run. New ARM binaries cannot run; apps have to be part of the build, like Dream-TOS.
+**This is an emulated ARM CPU, so to be plain about it:** anything without a recompiled block runs this way. It's slow, as every instruction is decoded each time it runs. Nothing is generated at runtime, so it's not a JIT. RISC OS and bundled apps stay native.
+
+Without the interpreter (`INTERP=`, or the default harness), each known instruction word gets one precompiled routine that takes its PC as an argument, looked up by word. SWI words, branch words and the `LDMIA r12!,{list}` that C apps build on the stack for SWI veneers share a routine each, since those read the word for their number, offset or register list. Unknown words do not run there, so new ARM binaries cannot either.
 
 ## Disc streaming
 
@@ -42,7 +46,7 @@ Machine state lives in r14 on SH-4 (`-ffixed-r14` is required, or GCC borrows th
 
 ## Bundled apps
 
-Dropped ARM binaries still cannot run, so a bundled app is recompiled like the ROM. `apps/` has one folder per app and [apps/README.md](../apps/README.md) covers the manifest. There are two parts, and neither loads at boot:
+A dropped ARM binary runs through the interpreter, which is far slower than native code, so a bundled app is recompiled like the ROM. `apps/` has one folder per app and [apps/README.md](../apps/README.md) covers the manifest. There are two parts, and neither loads at boot:
 
 - Files: `tools/mkapps.py` appends a ResourceFS pack to `rom.bin`, mapped at `0x3C00000` through the cold page cache. A small `DreamApps` module, added to the ROM's module chain, registers it, so the app appears under `Apps` like any other. Every ResourceFS lookup walks every file header, so the pack keeps headers in its first page and files only cost a disc read when opened. Boot reads that one page
 - Code: each app is an overlay unit. It runs at its load address, which other tasks share, so a unit only starts from its entry point with the right instruction there, and entries from outside are checked against the instruction they were compiled from

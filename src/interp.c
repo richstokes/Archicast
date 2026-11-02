@@ -1,4 +1,4 @@
-/* Experiment: run ARM code that was never recompiled, one instruction at a time.
+/* Run ARM code that was never recompiled, one instruction at a time.
  *
  * The recompiled ROM stays the operating system. This only takes over when control
  * reaches RAM (or a ROM path the static scan missed), so a game loaded from a real
