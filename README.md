@@ -1,4 +1,4 @@
-# DreamRISC3
+# Archicast
 
 RISC OS 3.11 running natively on the Sega Dreamcast, built on KallistiOS.
 

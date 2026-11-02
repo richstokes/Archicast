@@ -1520,7 +1520,7 @@ void mach_init(const u8 *cmos_image)
 		u32 sectors = plat_hd_sectors(i);
 		if (!sectors)
 			break; /* a slave with no master is never configured */
-		ide_init(i, sectors, plat_hd_writable(i) ? "Dreamcast SD" : "DreamRISC archive");
+		ide_init(i, sectors, plat_hd_writable(i) ? "Dreamcast SD" : "Archicast archive");
 	}
 	if (i) {
 		/* IDEDiscs lives in the top bits of logical CMOS byte 0x87. Keep the

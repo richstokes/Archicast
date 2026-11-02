@@ -81,5 +81,5 @@ tests/payloads/katana/src/exe/
 # VS Code settings folder
 .vscode/
 
-# DreamRISC3 vendored copy: this table file is #included by edc_ecc.c and must be tracked.
+# Archicast vendored copy: this table file is #included by edc_ecc.c and must be tracked.
 !src/third_party/libedc/crctable.out

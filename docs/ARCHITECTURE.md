@@ -286,7 +286,7 @@ python3 tests/printserver.py 8631 build/job
 ```
 
 ```bash
-DREAM_PRINTER=127.0.0.1:8631/ipp/print DREAM_REPLAY=tests/netprint.replay ./build/dreamrisc-host build/rom.bin assets/cmos.bin 170 build/shot.ppm
+DREAM_PRINTER=127.0.0.1:8631/ipp/print DREAM_REPLAY=tests/netprint.replay ./build/archicast-host build/rom.bin assets/cmos.bin 170 build/shot.ppm
 ```
 
 ## Considerations

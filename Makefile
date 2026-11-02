@@ -62,24 +62,24 @@ $(HOSTOBJ)/net_host.o: src/host/net.c src/net.h src/print.h src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
-host: build/dreamrisc-host
+host: build/archicast-host
 
-build/dreamrisc-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o
+build/archicast-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o
 	$(HOSTCC) -o $@ $^
 
-# Harnesses with the ARM interpreter. dreamrisc-interp falls back to it for
-# RAM and unrecompiled code; dreamrisc-interpall runs everything through it, ROM too.
+# Harnesses with the ARM interpreter. archicast-interp falls back to it for
+# RAM and unrecompiled code; archicast-interpall runs everything through it, ROM too.
 # The Dreamcast build carries the ARM interpreter, which anything loaded off a
 # disc runs through, including the whole software archive. INTERP= leaves it out.
 INTERP ?= 1
 INTERP_OBJ = $(filter-out $(HOSTOBJ)/mach.o,$(XLAT_HOST) $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o)
 
-build/dreamrisc-interp: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
+build/archicast-interp: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -c src/mach.c -o $(HOSTOBJ)/mach_i.o
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -c src/interp.c -o $(HOSTOBJ)/interp_i.o
 	$(HOSTCC) -o $@ $(INTERP_OBJ) $(HOSTOBJ)/mach_i.o $(HOSTOBJ)/interp_i.o
 
-build/dreamrisc-interpall: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
+build/archicast-interpall: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -DARM_INTERP_ALL -c src/mach.c -o $(HOSTOBJ)/mach_a.o
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -DARM_INTERP_ALL -c src/interp.c -o $(HOSTOBJ)/interp_a.o
 	$(HOSTCC) -o $@ $(INTERP_OBJ) $(HOSTOBJ)/mach_a.o $(HOSTOBJ)/interp_a.o
@@ -156,10 +156,10 @@ $(DCOBJ)/images.o: src/dc/images.S assets/cmos.bin
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) -c $< -o $@
 
-dc: build/dreamrisc.elf $(OV_DC)
+dc: build/archicast.elf $(OV_DC)
 
-build/dreamrisc.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/print.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
-	kos-cc -o $@ $^ -lppp -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--wrap=realloc -Wl,-Map,build/dreamrisc.map
+build/archicast.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/print.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
+	kos-cc -o $@ $^ -lppp -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--wrap=realloc -Wl,-Map,build/archicast.map
 
 # The Archimedes software archive as an ADFS hard disc, streamed off the CD.
 # Downloads are cached under /tmp/archimedes-archive, so only the first build is slow.

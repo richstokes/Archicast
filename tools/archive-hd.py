@@ -458,7 +458,7 @@ def main():
             seen.setdefault(h, key)
 
     root = adfs.Entry("$", attrs=0x08)
-    readme = ["DreamRISC software archive", "", "Folder: archive name", ""]
+    readme = ["Archicast software archive", "", "Folder: archive name", ""]
     taken = {}
     chosen = sorted(titles.values(), key=lambda t: (t[0], t[1].lower()))
     if args.limit:

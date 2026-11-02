@@ -1,5 +1,5 @@
 Tertis 2.05, (C) 1993 SICK: Merlin Hughes, Conrad Hughes and Andrew Block.
-GPL-3.0-or-later. Recompiled for DreamRISC from the ARM binary.
+GPL-3.0-or-later. Recompiled for Archicast from the ARM binary.
 https://github.com/merlinorg/trts
 
 Space plays. Keypad 4 and 6 move, 5 rotates, 0 drops, F1 pauses, F12 ends the

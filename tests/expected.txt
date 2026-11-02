@@ -10,10 +10,10 @@ tests/ping.replay 102 DFCA821F
 tests/netsetup.replay 90 164FEE5A
 tests/tertis.replay 132 B893A1D9
 tests/tertis-exit.replay 152 1EA8020E
-tests/web.replay 98 061A0C74
+tests/web.replay 98 21637CD8
 tests/logo-lang.replay 772 2446DDDD build/test.adf
 tests/logo-ui.replay 196 DE19674D
-tests/web-iconbar.replay 124 2B252EB9
+tests/web-iconbar.replay 124 CBFEE965
 tests/drag.replay 107 519B60F4
 tests/taskwindow.replay 94 93FE9DB4
 tests/menus.replay 217 E9667B45

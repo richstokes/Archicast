@@ -343,5 +343,5 @@ endif
 ## Tests
 #
 
-# DreamRISC3 vendored copy: tests/ is not shipped (see VENDOR.md).
+# Archicast vendored copy: tests/ is not shipped (see VENDOR.md).
 # subdir('tests')

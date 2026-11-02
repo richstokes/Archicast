@@ -7,7 +7,7 @@ replay=$1; seconds=$2; limit=${3:-40}
 export ROM_DIR=${ROM_DIR:-../arculator-mac/roms/riscos311}
 for ((i = 0; i < limit; i++)); do
   make gen >/dev/null && rm -f build/host/xlat_*.o && make -j16 host 2>&1 | grep -E " error" | head -3
-  out=$(DREAM_REPLAY=$replay ./build/dreamrisc-host build/rom.bin assets/cmos.bin "$seconds" build/shot.ppm 2>&1)
+  out=$(DREAM_REPLAY=$replay ./build/archicast-host build/rom.bin assets/cmos.bin "$seconds" build/shot.ppm 2>&1)
   miss=$(echo "$out" | grep -o 'no native code for pc=[0-9A-F]* word=[0-9A-F]*' | head -1)
   if [ -z "$miss" ]; then echo "$out" | tail -1; echo "converged after $i misses"; exit 0; fi
   pc=${miss#*pc=}; pc=${pc%% *}; word=${miss##*word=}

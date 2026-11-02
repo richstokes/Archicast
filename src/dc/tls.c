@@ -50,7 +50,7 @@ void plat_tls_close(web_tls_t *t)
 
 web_tls_t *plat_tls_open(int fd, const char *host)
 {
-	static const char label[] = "DreamRISC";
+	static const char label[] = "Archicast";
 	web_tls_t *t = calloc(1, sizeof(*t));
 	uint64_t give_up = timer_ms_gettime64() + 30000;
 	int rv;

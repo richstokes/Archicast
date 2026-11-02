@@ -56,7 +56,7 @@ svg = f"""<?xml version="1.0" encoding="UTF-8"?>
   <path d="{stem}" fill="none" stroke="{GREEN}" stroke-width="5" stroke-linecap="round"/>
   <!-- wordmark -->
   <text x="112" y="52" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="700"
-        font-size="34" fill="{INK}" letter-spacing="-1">Dream<tspan fill="{BLUE}">RISC</tspan></text>
+        font-size="34" fill="{INK}" letter-spacing="-1">Archi<tspan fill="{BLUE}">cast</tspan></text>
   <text x="114" y="73" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="400"
         font-size="12" fill="{GREY}" letter-spacing="1">RISC OS 3.11 ON DREAMCAST</text>
 </svg>

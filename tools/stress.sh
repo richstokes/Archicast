@@ -2,7 +2,7 @@
 # Boot the harness many times with randomised clocks; report anything off the desktop.
 cd "$(dirname "$0")/.."
 one() {
-  out=$(DREAM_US_STEP=$1 DREAM_US_JITTER=$2 DREAM_SEED=$3 timeout 60 ./build/dreamrisc-host build/rom.bin assets/cmos.bin 45 /dev/null 2>&1)
+  out=$(DREAM_US_STEP=$1 DREAM_US_JITTER=$2 DREAM_SEED=$3 timeout 60 ./build/archicast-host build/rom.bin assets/cmos.bin 45 /dev/null 2>&1)
   echo "$1 $2 $3 $(echo "$out" | grep -E 'screen sum|no native' | head -1) | $(echo "$out" | grep '^IOC' | cut -c1-60)"
 }
 export -f one

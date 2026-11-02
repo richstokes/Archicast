@@ -114,7 +114,7 @@ static void identify(void)
 	b[3] = (u8)(cylinders >> 8);
 	b[6] = HD_HEADS;
 	b[12] = HD_SPT;
-	put_id_string(b + 20, "DREAMRISC", 20);
+	put_id_string(b + 20, "ARCHICAST", 20);
 	put_id_string(b + 46, "1.0", 8);
 	put_id_string(b + 54, d->model, 40);
 	d->pos = 0;

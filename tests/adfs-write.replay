@@ -1,7 +1,7 @@
 # On a formatted disc: name it, make folders and write a file with *Spool.
 70 key 0 12 1
 70.1 key 0 12 0
-73 type namedisc :0 DreamRISC\n
+73 type namedisc :0 Archicast\n
 80 type cdir adfs::0.$.Documents\n
 88 type cdir adfs::0.$.Programs\n
 96 type spool adfs::0.$.Documents.Hello\n

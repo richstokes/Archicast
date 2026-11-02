@@ -69,10 +69,10 @@ typedef struct {
 	char url[MAX_URL];
 } page_t;
 
-#define USER_AGENT "DreamRISC/1.0 (RISC OS 3.11; Dreamcast)"
+#define USER_AGENT "Archicast/1.0 (RISC OS 3.11; Dreamcast)"
 
 static const char home_page[] =
-	"<title>DreamRISC Browser</title><h1>DreamRISC Browser</h1>"
+	"<title>Archicast Browser</title><h1>Archicast Browser</h1>"
 	"<p>A small web browser for RISC OS 3.11 on the Dreamcast. Type an address in the bar "
 	"above and press Return.</p>"
 	"<form action=\"https://lite.duckduckgo.com/lite/\"><input name=q> <input type=submit value=Search></form>"
