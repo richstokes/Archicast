@@ -142,6 +142,8 @@ The interpreter models one piece of the ARM pipeline for this software: a word s
 
 Floppy software often names its own disc (`adfs::0.!Sp_Spell`), which fails from a hard disc. `relocate` rewrites those paths to the title's folder in Obey, Exec and BASIC files, ~90 of them, but only when the next name in the path exists there. Paths in compiled code can't change length so they stay, and Chocks Away still says `Drive empty`.
 
+`!Find` searches a ~240KB `Index` file in the root of the disc, which `write_index` builds: every folder, then a line per title, app and file, ~11,600 in all, with files pointing at a folder number to save ~700KB. Scanning that in BASIC would take seconds, so `DN_FIND` does it natively and the app is only the windows. `DN_FIND_DRIVE` says which drive is the archive, as it's the one that can't be written, and asking for a disc by name that isn't there would prompt for it. SD and floppy have no index, so those are walked a folder per poll.
+
 Most of the No-Intro set and some of TOSEC are JFD, a track dump that keeps copy protection. `read_jfd` takes the standard sectors by id and records which are missing, and a file on a missing sector counts as damage. Gods came through that way and runs, but anything that checks its protection at runtime will fail, as `fdc.c` has no protected tracks to show it.
 
 `tools/adfs.py` writes the same new-map layout as `hdformat.c`, with the files in place. Things FileCore insists on, each found the hard way with `*CheckMap`:

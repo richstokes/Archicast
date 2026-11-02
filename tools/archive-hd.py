@@ -49,6 +49,9 @@ FOLDERS = {"Applications": "Apps", "Educational": "Apps", "Miscellaneous": "Apps
            "Demos": "Demos", "Compilations": "Compilatns"}
 # A floppy path: drive 0 or a disc by name, optionally through $, then the next name
 FLOPPY_PATH = re.compile(rb"(?i)(?:adfs::[a-z0-9_-]+|(?:adfs:)?:0)\.(?:\$\.)?()([!a-z0-9_]+)")
+NOT_APPS = {"!system", "!scrap", "!boot", "!fonts"}  # support folders, not things to run
+DULL_FILES = {"!run", "!boot", "!sprites", "!sprites22", "!sprites23", "!help", "!runimage", "templates",
+              "messages", "sprites"}
 # Filed under Games by the collections that carry them
 APPS = re.compile(r"^(impression|pen down|startwrite|the hacker|hacker, the|desktophacker|coconizer|alps)", re.I)
 SKIP = re.compile(r"blank \d+k|catalogue|boot floppy|fileserver|^zzz", re.I)  # not software to run
@@ -312,6 +315,42 @@ def relocate(title, path):
     return moved
 
 
+def write_index(root, titles):
+    """The Index file !Find reads: folders, then a line per title, app and file.
+
+    Line one is the folder count and the next lines are those folders, so a file
+    needs only a number. Then, separated by tabs and ending in CR, D or R, the name,
+    what to show beside it and a path (R when it can be run, D for a folder only), or
+    F, the name and a folder number. Titles come first, as results follow this order."""
+    folders, numbers, tops, apps, files = [], {}, [], [], []
+    for path, entry in root.walk():
+        if entry.is_dir:
+            numbers[path] = len(folders)
+            folders.append(path)
+    def owner(path):
+        while path and path not in titles:
+            path = path.rpartition(".")[0]
+        return titles.get(path)
+    for path in sorted(titles, key=lambda p: titles[p][1].lower()):
+        entry, title, folder = titles[path]
+        runnable = [c for c in entry.children.values() if c.is_dir and c.name.startswith("!")
+                    and c.name.lower() not in NOT_APPS]
+        kind, target = ("R", path + "." + runnable[0].name) if len(runnable) == 1 else ("D", path)
+        tops.append("%s%s\t%s\t%s" % (kind, title, folder, target))
+    sole = {t.rsplit("\t", 1)[1] for t in tops}
+    for path, entry in root.walk():
+        if path == "ReadMe" or path in titles or path.count(".") < 1:
+            continue
+        where = owner(path)
+        if entry.is_dir:
+            if entry.name.startswith("!") and entry.name.lower() not in NOT_APPS and path not in sole:
+                apps.append("R%s\t%s\t%s" % (entry.name, where[1] if where else "", path))
+        elif entry.name.lower() not in DULL_FILES:
+            files.append("F%s\t%d" % (entry.name, numbers[path.rpartition(".")[0]]))
+    lines = [str(len(folders))] + folders + tops + apps + files
+    return ("\r".join(lines) + "\r").encode("latin-1", "replace")
+
+
 def split_big(folder):
     """Directories hold 77 entries; past that, titles go under alphabetical ranges."""
     if len(folder.children) <= adfs.DIR_ENTRIES:
@@ -425,7 +464,7 @@ def main():
     if args.limit:
         chosen = chosen[:args.limit]
     done = 0
-    bundled = set()
+    bundled = {}
     for folder, title, disks, stems in chosen:
         name = folder_name(title, taken.setdefault(folder, set()))
         dest = adfs.Entry(name, attrs=0x08)
@@ -434,18 +473,21 @@ def main():
             sanitise(tree)
             merge(dest, tree, "Disk%d" % disk if disk else None)
         root.subdir(folder).add(dest)
-        bundled.add(id(dest))
+        bundled[id(dest)] = title
         readme.append("%s.%s: %s" % (folder, name, "; ".join(stems)))
         done += 1
     for folder in root.children.values():
         split_big(folder)
     moved = 0
+    titled = {}
     for path, entry in list(root.walk()):
         if id(entry) in bundled:
             moved += relocate(entry, path)
+            titled[path] = (entry, bundled[id(entry)], path.split(".")[0])
     print("  rewrote floppy paths in %d files" % moved, file=sys.stderr)
     text = ("\n".join(readme) + "\n").encode("latin-1", "replace")
     root.add(adfs.Entry("ReadMe", 0xFFFFFFFF, 0, 0x13, text))
+    root.add(adfs.Entry("Index", 0xFFFFFFFF, 0, 0x13, write_index(root, titled)))
 
     image, log2_bpmb = adfs.build_smallest(root, DISC_NAME)
     with open(args.out, "wb") as f:

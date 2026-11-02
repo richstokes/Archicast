@@ -1,0 +1,4 @@
+IconSprites <Obey$Dir>.!Sprites
+Set Find$Dir <Obey$Dir>
+WimpSlot -min 520K -max 520K
+Run <Find$Dir>.!RunImage

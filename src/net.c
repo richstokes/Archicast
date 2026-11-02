@@ -15,7 +15,7 @@ enum {
 	DN_SOCK_CONNECT, DN_SOCK_SEND, DN_SOCK_RECV, DN_SOCK_SENDTO, DN_SOCK_RECVFROM,
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
 	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
-	DN_PRINT_STATUS,
+	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE,
 };
 
 #define ERR_INVAL 22
@@ -165,6 +165,34 @@ static s32 print_dump(void)
 	return result;
 }
 
+/* !Find's search, as BASIC would take seconds over the ~300KB index. Lines end in a
+ * control character, and only the name matches: past the kind letter, up to a tab.
+ * The pattern is already lower case. */
+static u32 find_match(u32 at, u32 end, const char *pattern)
+{
+	u32 len = (u32)strlen(pattern);
+	while (at < end) {
+		u32 p = at + 1;
+		for (; ld8(p) >= 32; p++) {
+			u32 j = 0, q = p;
+			while (j < len) {
+				int d = ld8(q++);
+				if (d >= 'A' && d <= 'Z')
+					d |= 32;
+				if (d != (u8)pattern[j])
+					break;
+				j++;
+			}
+			if (j == len)
+				return at;
+		}
+		while (p < end && ld8(p) != 13)
+			p++;
+		at = p + 1;
+	}
+	return 0;
+}
+
 void net_swi(u32 op)
 {
 	static net_status_t status;
@@ -308,6 +336,21 @@ void net_swi(u32 op)
 	case DN_PRINT_STATUS:
 		print_status(&print_state);
 		guest_write(R(0), &print_state, sizeof(print_state));
+		break;
+	case DN_FIND:
+		guest_string(R(2), name, sizeof(name));
+		result = (s32)find_match(R(0), R(1), name);
+		break;
+	case DN_FIND_LINE:
+		for (a = R(0), b = R(2); b && a < R(1); a++)
+			b -= ld8(a) == 13;
+		result = (s32)a;
+		break;
+	case DN_FIND_DRIVE: /* the archive is the drive that can't be written */
+		result = -1;
+		for (a = 0; a < HD_UNITS; a++)
+			if (plat_hd_sectors((int)a) && !plat_hd_writable((int)a))
+				result = 4 + (s32)a;
 		break;
 	default:
 		result = -ERR_INVAL;
