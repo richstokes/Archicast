@@ -6,7 +6,7 @@ findop%=30: lineop%=31: driveop%=32
 maxres%=200: rowh%=40: wide%=1216: namecol%=36: task%=0
 DIM res%(maxres%-1), live$(maxres%-1), stack$(100)
 buf%=0: bufend%=0: first%=0: count%=0: sel%=-1
-sp%=0: walking%=FALSE: pend$="": pendat%=0: quit%=FALSE
+apps%=FALSE: sp%=0: walking%=FALSE: pend$="": pendat%=0: quit%=FALSE
 $q%="": $stat%="Type a name and press Return"
 ON ERROR PROCfail: END
 SYS swi%+driveop% TO arc%
@@ -55,16 +55,18 @@ $(b%+72)=title$
 ENDPROC
 
 DEF PROCwindows
-LOCAL label%, go%, valid%
-DIM label% 8, go% 8, valid% 8
+LOCAL label%, go%, valid%, only%, tick%
+DIM label% 8, go% 8, valid% 8, only% 24, tick% 16
 $label%="Find": $go%="Search": $valid%="R7"
+$only%="Apps and games only": $tick%="Soptoff,opton"
 PROCwinblock(30,740,30+wide%,880,&87000002,wide%,132,0,"Find")
-b%!84=4
+b%!84=5
 p%=88
 PROCicon(16,-60,96,-12,&17000111,label%,-1,8)
 PROCicon(100,-60,1040,-12,&0700F135,q%,valid%,64)
 PROCicon(1056,-60,1200,-12,&1700313D,go%,-1,8)
-PROCicon(16,-120,1200,-68,&17000131,stat%,-1,80)
+PROCicon(16,-120,780,-68,&17000131,stat%,-1,80)
+PROCicon(790,-120,1200,-68,&1700B113,only%,tick%,24)
 SYS "Wimp_CreateWindow",,b% TO win%
 PROCwinblock(30,150,30+wide%,690,&FF000002,wide%,540,&A000,"Results")
 b%!84=0
@@ -130,6 +132,9 @@ LOCAL a%,pat$
 pat$=FNlower(FNstr(q%))
 IF pat$="" THEN ENDPROC
 $q%=pat$
+!b%=win%: b%!4=4
+SYS "Wimp_GetIconState",,b%
+apps%=(b%!24 AND (1<<21))<>0
 PROCload
 count%=0: sel%=-1: walking%=FALSE: sp%=0
 needle$=pat$
@@ -137,6 +142,8 @@ a%=first%
 IF buf% THEN
   REPEAT
     SYS swi%+findop%,a%,bufend%,q% TO a%
+    REM Files follow every title and app, so the first one ends an apps search
+    IF a% AND apps% THEN IF ?a%=ASC("F") THEN a%=0
     IF a% THEN
       res%(count%)=a%: count%+=1
       WHILE ?a%>=32 OR ?a%=9: a%+=1: ENDWHILE
@@ -186,7 +193,7 @@ REPEAT
   WHILE n%>0 AND count%<maxres%
     t%=e%!16
     name$=FNzero(e%+20)
-    IF INSTR(FNlower(name$),needle$) THEN
+    IF INSTR(FNlower(name$),needle$) AND (LEFT$(name$,1)="!" OR NOT apps%) THEN
       live$(count%)=dir$+"."+name$
       res%(count%)=0: count%+=1
       PROCresize
@@ -274,7 +281,7 @@ DEF PROCclick
 LOCAL row%,my%,btn%
 my%=b%!4: btn%=b%!8
 IF !(b%+12)=win% THEN
-  IF b%!16=2 THEN PROCsearch
+  IF b%!16=2 OR b%!16=4 THEN PROCsearch
   ENDPROC
 ENDIF
 IF b%!12<>list% THEN ENDPROC
