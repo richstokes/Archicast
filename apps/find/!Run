@@ -1,4 +1,5 @@
 IconSprites <Obey$Dir>.!Sprites
+If "<Find$Running>"<>"" Then Error Find is already on the icon bar
 Set Find$Dir <Obey$Dir>
 WimpSlot -min 520K -max 520K
 Run <Find$Dir>.!RunImage

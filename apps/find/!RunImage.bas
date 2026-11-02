@@ -12,8 +12,9 @@ ON ERROR PROCfail: END
 SYS swi%+driveop% TO arc%
 SYS "Wimp_Initialise",200,&4B534154,"Find" TO ,task%
 PROCwindows
-PROCopenwin(win%,-1)
-SYS "Wimp_SetCaretPosition",win%,1,0,0,-1,0
+PROCiconbar
+OSCLI "Set Find$Running 1"
+PROCshow
 REPEAT
   SYS "OS_ReadMonotonicTime" TO now%
   mask%=1
@@ -23,12 +24,14 @@ REPEAT
     WHEN 0: PROCtick
     WHEN 1: PROCredraw
     WHEN 2: SYS "Wimp_OpenWindow",,b%
-    WHEN 3: IF !b%=win% THEN quit%=TRUE ELSE SYS "Wimp_CloseWindow",,b%
-    WHEN 6: PROCclick
+    WHEN 3: PROChide(!b%)
+    WHEN 6: IF b%!12=-2 THEN PROCbarclick ELSE PROCclick
     WHEN 8: IF b%!24=13 THEN PROCsearch ELSE SYS "Wimp_ProcessKey",b%!24
+    WHEN 9: quit%=TRUE
     WHEN 17,18: IF b%!16=0 THEN quit%=TRUE
   ENDCASE
 UNTIL quit%
+OSCLI "Unset Find$Running"
 SYS "Wimp_CloseDown",task%,&4B534154
 END
 
@@ -36,7 +39,43 @@ DEF PROCfail
 !b%=ERR
 $(b%+4)=REPORT$+" at line "+STR$(ERL)+CHR$(0)
 SYS "Wimp_ReportError",b%,1,"Find"
+OSCLI "Unset Find$Running"
 SYS "Wimp_CloseDown",task%,&4B534154
+ENDPROC
+
+DEF PROCiconbar
+DIM menu% 64
+b%!0=-1: b%!4=0: b%!8=0: b%!12=68: b%!16=68
+b%!20=&3002: $(b%+24)="!find"
+SYS "Wimp_CreateIcon",,b%
+$menu%="Find": menu%?12=7: menu%?13=2: menu%?14=7: menu%?15=0
+menu%!16=112: menu%!20=44: menu%!24=0
+menu%!28=&80: menu%!32=-1: menu%!36=&07000021
+$(menu%+40)="Quit"
+ENDPROC
+
+DEF PROCbarclick
+IF b%!8=2 THEN
+  SYS "Wimp_CreateMenu",,menu%,b%!0-56,140
+ELSE
+  PROCshow
+ENDIF
+ENDPROC
+
+DEF PROCshow
+IF count% THEN PROCopenwin(list%,-1)
+PROCopenwin(win%,-1)
+SYS "Wimp_SetCaretPosition",win%,1,0,0,-1,LEN($q%)
+ENDPROC
+
+REM Closing the window leaves the icon, and closing Find takes its results too
+DEF PROChide(w%)
+!b%=w%
+SYS "Wimp_CloseWindow",,b%
+IF w%=win% THEN
+  !b%=list%
+  SYS "Wimp_CloseWindow",,b%
+ENDIF
 ENDPROC
 
 DEF PROCicon(x0%,y0%,x1%,y1%,flags%,text%,valid%,len%)
