@@ -179,6 +179,9 @@ RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based 
 | +25 | PrintDump | the dumper veneer, see Printing; out r0 = 0 ok, 1 call again, 2 failed |
 | +26 to +28 | PrintGetConfig, PrintSetConfig, PrintSaveConfig | r0 -> 64 byte block: paper, host |
 | +29 | PrintStatus | r0 -> 60 byte block: state, pages, bytes, text |
+| +30 to +32 | Find, FindLine, FindDrive | !Find's index search, see Software archive |
+| +33 | BoxFS | the Dreambox veneers, see Dreambox; out r12 = 0 done, 1 call again, 2 error in r0 |
+| +34 | BoxInit | r2 -> 256 bytes of RMA for error blocks |
 
 Addresses are one word, most significant byte first. Blocks are laid out in `src/net.h`.
 
@@ -288,6 +291,50 @@ python3 tests/printserver.py 8631 build/job
 ```bash
 DREAM_PRINTER=127.0.0.1:8631/ipp/print DREAM_REPLAY=tests/netprint.replay ./build/archicast-host build/rom.bin assets/cmos.bin 170 build/shot.ppm
 ```
+
+## Dreambox
+
+### Problem Statement
+
+Saves only live on the console: the SD card, or a floppy that's gone at power off. Folks want work from `!Draw` or Pen Down somewhere they can get at from another console or a computer, and dcvmu.com already has accounts.
+
+### Proposal
+
+A filing system, `Dreambox:`, backed by an API on dcvmu.com. Once it's a real FileSwitch filing system, every app can save to it with no changes, and the Filer shows it like any other directory. `!Dreambox` in Apps just opens `Dreambox::Dreambox.$`.
+
+1. The DreamApps module registers the filing system at init (`tools/mkapps.py`). Each of the 7 FileSwitch entries is two words: put its number in r12 and branch to a loop that calls DreamNet_BoxFS until r12 stops saying "call again". ~180 bytes of ARM in the ROM gap, which has ~170 left
+2. `src/dreambox.c` does the rest natively. Each entry is a small state machine (protothreads) that hands one HTTP request at a time to a worker thread, so the desktop keeps its pointer while the network is busy
+3. The server stages writes in 32KB blocks and only replaces a file on commit, with unwritten blocks either kept (a file opened for update) or zero
+
+Linking: the first time, the error box says "log in at dcvmu.com, open Account, Archicast and enter ABCD-1234". Typing the code on the website links the console, and the token goes on the VMU (`DRISCBOX`). Mainly because our TLS can't check certificates, so a password typed on the console would be readable by anyone who can sit in the middle. The token can only reach the drive, and Unlink on the website revokes it.
+
+**No BASIC anywhere, and memory only while it's in use.** File data moves through one 32KB window shared by every open file and by whole-file loads and saves, freed once nothing is open. A directory listing is kept as the server's text, at most 16KB, so the Filer's paging and FileSwitch's constant "read catalogue info" calls don't each cost a round trip, and it goes once it's 5s stale. The keep-alive connection, with its TLS state, closes after 20s idle. Code is ~10KB of SH-4 and ~6KB of static buffers.
+
+### Considerations
+
+- Files are buffered by FileSwitch (1KB) and FileSwitch keeps the current directory, so we only see whole paths like `:Dreambox.$.Work.Note`. `*Cat`, `*Ex` and `*Info` all come through Func 15, so Func 2 to 6 are never called
+- `*Spool` creates the file with File 7 and then opens it for update, not with openout
+- 4 files open at once (FileSwitch enforces it from the information word). Opening a 5th says so
+- Limits are the server's: 4MB a file, 16MB and 2000 objects an account, 255 entries a directory, names of 1-32 characters with no spaces
+- Nothing is cached between sessions, so another machine's changes show up on the next look, within 5s
+- Open question: the veneer spins in SVC mode with interrupts on, the same as the printer dumper. Escape can't stop an operation, though each request gives up after 30s
+- Not in scope for now: an icon bar icon, which would need a Wimp task. The Apps folder does the job for now. Down the road a module task is the light way to add one
+
+### Results
+
+11/2, Mac harness against the real service (`tests/boxserver.py`, plain HTTP): `tests/dreambox.replay` makes a directory, spools a file, types it, saves and loads 36KB, sets a type, renames, lists with wildcards and deletes, all correct. A BASIC program run straight off the drive wrote 80001 bytes through `BPUT#`, changed byte 40000 through an update handle and read it all back with the right sum. A load then save round trip came back byte for byte. Linking ran end to end: code in the error box, code accepted, token saved, listing shown. The Filer opens the drive with the right icons.
+
+Not tested yet: anything on a Dreamcast, Flycast included, and TLS against dcvmu.com, which needs the service deployed first. TLS to dcvmu.com itself already works from `!Web`.
+
+```bash
+projects/dcvmu.com/service/.venv/bin/python tests/boxserver.py projects/dcvmu.com/service 8099 build/box.token
+```
+
+```bash
+DREAM_DREAMBOX=http://127.0.0.1:8099 DREAM_DREAMBOX_TOKEN=build/box.token DREAM_REPLAY=tests/dreambox.replay ./build/archicast-host build/rom.bin assets/cmos.bin 150 build/shot.ppm
+```
+
+The service path is in the dreamcast-homebrew repo. Leave out `DREAM_DREAMBOX_TOKEN` to see the linking error.
 
 ## Considerations
 

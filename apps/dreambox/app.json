@@ -1,0 +1,9 @@
+{
+  "name": "!Dreambox",
+  "files": [
+    {"name": "!Boot", "type": "feb", "local": "!Boot"},
+    {"name": "!Run", "type": "feb", "local": "!Run"},
+    {"name": "!Help", "type": "fff", "local": "!Help"},
+    {"name": "!Sprites", "type": "ff9", "art": "icon.txt"}
+  ]
+}

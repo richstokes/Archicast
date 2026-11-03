@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
+#include "../dreambox.h"
 #include "../net.h"
 #include "../print.h"
 
@@ -24,6 +25,8 @@
 #define CONFIG_MAGIC 0x31544E44u
 #define PRINT_CONFIG_NAME "DRISCPRN"
 #define PRINT_CONFIG_MAGIC 0x31525044u
+#define BOX_CONFIG_NAME "DRISCBOX"
+#define BOX_CONFIG_MAGIC 0x31584244u
 #define WORKER_STACK 0x8000
 #define IDLE_MS 20
 
@@ -512,4 +515,58 @@ int plat_net_resolve_result(uint8_t ip[4])
 	if (resolve_state > 0)
 		memcpy(ip, resolve_ip, 4);
 	return resolve_state;
+}
+
+/* Dreambox keeps its link token beside the other settings. Losing it only means
+ * linking again, so any card will do. */
+typedef struct { uint32_t magic; char token[64]; } box_saved_t;
+
+const char *plat_dreambox_server(void)
+{
+	return "https://dcvmu.com";
+}
+
+int plat_dreambox_load(char *token, int size)
+{
+	box_saved_t saved;
+	maple_device_t *dev;
+	char path[32];
+	int unit;
+	for (unit = 0; (dev = maple_enum_type(unit, MAPLE_FUNC_MEMCARD)); unit++) {
+		file_t f;
+		ssize_t got;
+		snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, BOX_CONFIG_NAME);
+		f = fs_open(path, O_RDONLY);
+		if (f == FILEHND_INVALID)
+			continue;
+		got = fs_read(f, &saved, sizeof(saved));
+		fs_close(f);
+		if (got == sizeof(saved) && saved.magic == BOX_CONFIG_MAGIC && saved.token[0]) {
+			saved.token[sizeof(saved.token) - 1] = 0;
+			snprintf(token, (size_t)size, "%s", saved.token);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int plat_dreambox_save(const char *token)
+{
+	box_saved_t saved;
+	maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
+	char path[32];
+	file_t f;
+	ssize_t put;
+	if (!dev)
+		return -1;
+	snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, BOX_CONFIG_NAME);
+	memset(&saved, 0, sizeof(saved));
+	saved.magic = BOX_CONFIG_MAGIC;
+	snprintf(saved.token, sizeof(saved.token), "%s", token);
+	f = fs_open(path, O_WRONLY);
+	if (f == FILEHND_INVALID)
+		return -1;
+	put = fs_write(f, &saved, sizeof(saved));
+	fs_close(f);
+	return put == sizeof(saved) ? 0 : -1;
 }

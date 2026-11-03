@@ -8,6 +8,7 @@
 #include "../cpu.h"
 #include <time.h>
 #include <unistd.h>
+#include "../dreambox.h"
 #include "../net.h"
 #include "../print.h"
 #include "../web.h"
@@ -195,4 +196,36 @@ uint64_t plat_wall_ms(void)
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	return (uint64_t)t.tv_sec * 1000 + (uint64_t)t.tv_nsec / 1000000;
+}
+
+/* Dreambox on the harness: DREAM_DREAMBOX is the server, plain HTTP as there's no
+ * TLS here, and DREAM_DREAMBOX_TOKEN a file that keeps the link between runs */
+const char *plat_dreambox_server(void)
+{
+	const char *server = getenv("DREAM_DREAMBOX");
+	return server ? server : "http://127.0.0.1:8099";
+}
+
+int plat_dreambox_load(char *token, int size)
+{
+	const char *path = getenv("DREAM_DREAMBOX_TOKEN");
+	FILE *f = path ? fopen(path, "r") : NULL;
+	int ok;
+	if (!f)
+		return 0;
+	ok = fgets(token, size, f) != NULL;
+	fclose(f);
+	token[strcspn(token, "\r\n")] = 0;
+	return ok && token[0];
+}
+
+int plat_dreambox_save(const char *token)
+{
+	const char *path = getenv("DREAM_DREAMBOX_TOKEN");
+	FILE *f = path ? fopen(path, "w") : NULL;
+	if (!f)
+		return -1;
+	fprintf(f, "%s\n", token);
+	fclose(f);
+	return 0;
 }

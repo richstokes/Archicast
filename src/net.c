@@ -5,6 +5,7 @@
  * exists, since there is nowhere to build an error block for the kernel. */
 #include <string.h>
 #include "cpu.h"
+#include "dreambox.h"
 #include "net.h"
 #include "print.h"
 #include "web.h"
@@ -15,7 +16,7 @@ enum {
 	DN_SOCK_CONNECT, DN_SOCK_SEND, DN_SOCK_RECV, DN_SOCK_SENDTO, DN_SOCK_RECVFROM,
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
 	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
-	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE,
+	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE, DN_BOX_FS, DN_BOX_INIT,
 };
 
 #define ERR_INVAL 22
@@ -345,6 +346,21 @@ void net_swi(u32 op)
 		for (a = R(0), b = R(2); b && a < R(1); a++)
 			b -= ld8(a) == 13;
 		result = (s32)a;
+		break;
+	case DN_BOX_FS: { /* the Dreambox veneers: r12 says done, call again or error */
+		static const guest_mem_t mem = {guest_read, guest_write, guest_string};
+		u32 r[13];
+		for (a = 0; a < 13; a++)
+			r[a] = R(a);
+		result = dreambox_fs(r, &mem);
+		if (result != BOX_AGAIN)
+			for (a = 0; a < 8; a++)
+				R(a) = r[a];
+		R(12) = (u32)result;
+		return;
+	}
+	case DN_BOX_INIT:
+		dreambox_init(R(2));
 		break;
 	case DN_FIND_DRIVE: /* the archive is the drive that can't be written */
 		result = -1;

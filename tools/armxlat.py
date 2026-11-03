@@ -11,7 +11,7 @@ from pathlib import Path
 
 import re
 
-from mkapps import load_apps
+from mkapps import box_entries, load_apps
 from romscan import ENTRIES, ROM_BASE, SKIP_MODULES, find_chain, module_info, plausible, sweep, walk, word
 from scorpress import unpack
 
@@ -435,6 +435,8 @@ def collect(rom, traces, extra):
     modules = [module_info(rom, offset) for offset in find_chain(rom)]
     seeds = [0x1AC] + extra
     seeds += [seed for m in modules if m["title"] not in SKIP_MODULES for seed in m["seeds"]]
+    if any(m["title"] == "DreamApps" for m in modules):
+        seeds += box_entries()
     jumps, ram, traced = set(), set(), set()
     for prefix in traces:
         hits = read_bitmap(prefix + ".bits")

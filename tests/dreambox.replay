@@ -1,0 +1,18 @@
+# Dreambox from the command line, against tests/boxserver.py: make a directory,
+# write a file through an open handle, read it back, save and load memory,
+# list, rename and delete. The last shot is the checked one.
+70 key 0 12 1
+70.1 key 0 12 0
+73 type cdir dreambox:$.Work\n
+80 type spool dreambox:$.Work.Note\n
+84 type echo Hello from the Dreambox\n
+88 type spool\n
+92 type type dreambox:$.Work.Note\n
+98 type save dreambox:$.Work.Mem 8000 +9000\n
+106 type load dreambox:$.Work.Mem 20000\n
+114 type settype dreambox:$.Work.Note text\n
+118 type rename dreambox:$.Work.Mem dreambox:$.Work.Block\n
+124 type info dreambox:$.Work.*\n
+132 type delete dreambox:$.Work.Block\n
+138 type ex dreambox:$.Work\n
+146 shot build/box1.ppm

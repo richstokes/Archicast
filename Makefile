@@ -42,7 +42,7 @@ $(HOSTOBJ)/main.o: src/host/main.c src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
-$(HOSTOBJ)/net.o: src/net.c src/net.h src/print.h src/cpu.h
+$(HOSTOBJ)/net.o: src/net.c src/net.h src/print.h src/dreambox.h src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
@@ -58,13 +58,17 @@ $(HOSTOBJ)/print.o: src/print.c src/print.h src/net.h src/web.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
-$(HOSTOBJ)/net_host.o: src/host/net.c src/net.h src/print.h src/cpu.h
+$(HOSTOBJ)/dreambox.o: src/dreambox.c src/dreambox.h src/net.h src/web.h
+	@mkdir -p $(HOSTOBJ)
+	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
+
+$(HOSTOBJ)/net_host.o: src/host/net.c src/net.h src/print.h src/dreambox.h src/cpu.h
 	@mkdir -p $(HOSTOBJ)
 	$(HOSTCC) $(HOSTFLAGS) -c $< -o $@
 
 host: build/archicast-host
 
-build/archicast-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o
+build/archicast-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o $(HOSTOBJ)/dreambox.o
 	$(HOSTCC) -o $@ $^
 
 # Harnesses with the ARM interpreter. archicast-interp falls back to it for
@@ -72,7 +76,7 @@ build/archicast-host: $(XLAT_HOST) $(HOSTOBJ)/mach.o $(HOSTOBJ)/fdc.o $(HOSTOBJ)
 # The Dreamcast build carries the ARM interpreter, which anything loaded off a
 # disc runs through, including the whole software archive. INTERP= leaves it out.
 INTERP ?= 1
-INTERP_OBJ = $(filter-out $(HOSTOBJ)/mach.o,$(XLAT_HOST) $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o)
+INTERP_OBJ = $(filter-out $(HOSTOBJ)/mach.o,$(XLAT_HOST) $(HOSTOBJ)/fdc.o $(HOSTOBJ)/ide.o $(HOSTOBJ)/hdformat.o $(HOSTOBJ)/main.o $(HOSTOBJ)/net.o $(HOSTOBJ)/net_sock.o $(HOSTOBJ)/net_host.o $(HOSTOBJ)/web.o $(HOSTOBJ)/print.o $(HOSTOBJ)/dreambox.o)
 
 build/archicast-interp: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -c src/mach.c -o $(HOSTOBJ)/mach_i.o
@@ -128,7 +132,7 @@ $(DCOBJ)/main.o: src/dc/main.c src/cpu.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) $(if $(INTERP),-DARM_INTERP) $(if $(HW_NO_SD),-DHW_NO_SD) $(if $(HW_AUTOFORMAT),-DHW_AUTOFORMAT) $(if $(HW_LOG),-DHW_LOG '-DPC_ROOT="$(CURDIR)/build/disc"') $(if $(HW_REPLAY),-DHW_REPLAY -Ibuild) $(if $(HW_DUMP),-DHW_DUMP) -c $< -o $@
 
-$(DCOBJ)/net.o: src/net.c src/net.h src/print.h src/web.h src/cpu.h
+$(DCOBJ)/net.o: src/net.c src/net.h src/print.h src/web.h src/dreambox.h src/cpu.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -c $< -o $@
 
@@ -144,11 +148,15 @@ $(DCOBJ)/print.o: src/print.c src/print.h src/net.h src/web.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -c $< -o $@
 
+$(DCOBJ)/dreambox.o: src/dreambox.c src/dreambox.h src/net.h src/web.h
+	@mkdir -p $(DCOBJ)
+	$(KOS_CC) $(DCFLAGS) -c $< -o $@
+
 $(DCOBJ)/tls.o: src/dc/tls.c src/web.h src/net.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -I$(KOS_PORTS)/include -c $< -o $@
 
-$(DCOBJ)/net_dc.o: src/dc/net.c src/net.h src/print.h
+$(DCOBJ)/net_dc.o: src/dc/net.c src/net.h src/print.h src/dreambox.h
 	@mkdir -p $(DCOBJ)
 	$(KOS_CC) $(DCFLAGS) -I$(KOS_BASE)/addons/include -c $< -o $@
 
@@ -158,7 +166,7 @@ $(DCOBJ)/images.o: src/dc/images.S assets/cmos.bin
 
 dc: build/archicast.elf $(OV_DC)
 
-build/archicast.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/print.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
+build/archicast.elf: $(XLAT_DC) $(DCOBJ)/mach.o $(DCOBJ)/fdc.o $(DCOBJ)/ide.o $(DCOBJ)/hdformat.o $(DCOBJ)/main.o $(DCOBJ)/images.o $(DCOBJ)/net.o $(DCOBJ)/net_sock.o $(DCOBJ)/net_dc.o $(DCOBJ)/web.o $(DCOBJ)/print.o $(DCOBJ)/dreambox.o $(DCOBJ)/tls.o $(if $(INTERP),$(DCOBJ)/interp.o)
 	kos-cc -o $@ $^ -lppp -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--wrap=realloc -Wl,-Map,build/archicast.map
 
 # The Archimedes software archive as an ADFS hard disc, streamed off the CD.

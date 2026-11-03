@@ -118,10 +118,16 @@ DUMPER_NUMBER = 40      # no Acorn dumper uses it
 PDRIVER_DP = 7          # PDriverDP's number with the PDriver sharer
 PDRIVER_VERSION = 0x148 # the newest PDriverDP takes; has to fit a MOV
 XDREAM_PRINT_DUMP = 0xEF0EDC19  # X form of DreamNet SWI +25
+XDREAM_BOX_FS = 0xEF0EDC21      # +33, src/dreambox.c
+XDREAM_BOX_INIT = 0xEF0EDC22    # +34
+BOX_FS_NUMBER = 0xDC            # BOX_FS_NUMBER in src/dreambox.h
+BOX_FILES = 4                   # HANDLES there; FileSwitch refuses a fifth open
+BOX_WORKSPACE = 256             # RMA for the error block the SWI writes
+BOX_ENTRIES = ["fs_open", "fs_get", "fs_put", "fs_args", "fs_close", "fs_file", "fs_func"]
 PRINT_ERROR = b"The network printer failed. See !NetPrint for why.\0"
 
 
-def assemble(items):
+def assemble(items, want_labels=False):
     """Words, or functions of (address, labels) giving a word; strings are labels, bytes data."""
     labels, at = {}, 0
     for item in items:
@@ -141,14 +147,29 @@ def assemble(items):
             data = struct.pack("<I", item(at, labels) if callable(item) else item)
         out += data
         at += len(data)
-    return bytes(out)
+    return labels if want_labels else bytes(out)
 
 
 def adr(reg, label):
     def encode(at, labels):
         offset = labels[label] - (at + 8)
-        assert 0 <= offset < 256
+        if offset < 0:
+            assert -offset < 256
+            return 0xE24F0000 | reg << 12 | -offset  # SUB reg,pc,#
+        assert offset < 256
         return 0xE28F0000 | reg << 12 | offset
+    return encode
+
+
+def mov_offset(reg, label):
+    """MOV reg,#label's offset from the module start, as a rotated immediate"""
+    def encode(at, labels):
+        value = labels[label]
+        for rot in range(16):
+            imm = (value << 2 * rot | value >> (32 - 2 * rot)) & 0xFFFFFFFF
+            if imm < 256:
+                return 0xE3A00000 | reg << 12 | rot << 8 | imm
+        raise AssertionError(f"{label} at {value:#x} doesn't fit a MOV")
     return encode
 
 
@@ -160,10 +181,21 @@ def offset(label):
     return lambda at, labels: labels[label]
 
 
-EQ, HI, VS = 0, 8, 6
+EQ, CC, HI, VS, AL = 0, 3, 8, 6, 14
 
 
 def arm_module():
+    return assemble(module_items())
+
+
+def box_entries():
+    """ROM offsets of the Dreambox veneers. FileSwitch reaches them only through the
+    filing system block, so the recompiler needs telling (tools/armxlat.py)."""
+    labels = assemble(module_items(), want_labels=True)
+    return [MODULE_AT + 4 + labels[name] for name in BOX_ENTRIES]
+
+
+def module_items():
     """Registers the pack, the printer dumper and the scrap variables !Scrap would set.
 
     Also answers ResourceFS restarting. The dumper is a veneer PDriverDP calls with a
@@ -173,10 +205,15 @@ def arm_module():
     again while the ring drains.
     It registers in init because PDumperDM just took this same path, so boot stays
     free of overlays.
+
+    It also adds the Dreambox filing system. Each FileSwitch entry puts its number
+    in r12, which FileSwitch doesn't need back, and calls DreamNet_BoxFS until r12
+    stops saying 1 (call again). 2 means r0 points at an error.
     """
     title = b"DreamApps\0"
-    help_text = b"DreamApps\t0.03 (1 Nov 2026)\0"
-    body = assemble([
+    help_text = b"DreamApps\t0.04 (2 Nov 2026)\0"
+    return [
+        "start",
         0,                 # start
         offset("init"),
         0,                 # final
@@ -201,6 +238,15 @@ def arm_module():
         0xE3A06007,        # MOV r6,#7 (strip types)
         0xE3A08000 | PDRIVER_DP,  # MOV r8,#PDriverDP
         0xEF0A015B,        # SWI XPDriver_MiscOpForDriver
+        0xE3A00006,        # MOV r0,#6 (claim)
+        0xE3A03000 | BOX_WORKSPACE >> 2 | 15 << 8,  # MOV r3,#workspace
+        0xEF02001E,        # SWI XOS_Module
+        XDREAM_BOX_INIT,   # SWI XDreamNet_BoxInit (r2 -> workspace)
+        0xE3A0000C,        # MOV r0,#12 (add a filing system)
+        adr(1, "start"),   # ADR r1,start (the module base)
+        mov_offset(2, "fsinfo"),  # MOV r2,#fsinfo
+        0xE3A03000,        # MOV r3,#0 (private word)
+        0xEF020029,        # SWI XOS_FSControl
         0xE1500000,        # CMP r0,r0 (a failure must not fail the boot)
         0xE8BD8100,        # LDMFD sp!,{r8,pc}
         "cmd1",
@@ -246,12 +292,34 @@ def arm_module():
         "error",
         0x00CDC000,        # error number
         PRINT_ERROR,
+        "fsinfo",
+        offset("fsname"),  # name
+        offset("fsname"),  # startup text
+        *(offset(name) for name in BOX_ENTRIES[:6]),
+        BOX_FS_NUMBER | BOX_FILES << 16,
+        offset("fs_func"),
+        0,                 # GBPB: files are buffered
+        0,                 # extra information word
+        *(item for n, name in enumerate(BOX_ENTRIES) for item in (
+            name,
+            0xE3A0C000 | n,  # MOV r12,#entry
+            branch(AL, "box"))),
+        "box",
+        0xE92D4000,        # STMFD sp!,{lr}
+        "box_again",
+        XDREAM_BOX_FS,     # SWI XDreamNet_BoxFS
+        0xE35C0001,        # CMP r12,#1
+        branch(EQ, "box_again"),
+        0xE8BD4000,        # LDMFD sp!,{lr}
+        0x33DEF201,        # BICCCS pc,lr,#V (r12 = 0, done)
+        0xE39EF201,        # ORRS pc,lr,#V (r12 = 2, r0 -> error)
+        "fsname",
+        b"Dreambox\0",
         "title",
         title,
         "help",
         help_text,
-    ])
-    return body
+    ]
 
 
 def patch_rom(rom):

@@ -1,0 +1,5 @@
+Dreambox is a network drive on dcvmu.com. Files you save here can be opened on another Dreamcast, or downloaded from the website.
+Double click !Dreambox to open the drive. Save into the window by dragging a save icon onto it, as with any other directory.
+The first time, an error box shows a link code. On dcvmu.com, log in, open your account, choose Archicast and type the code. Then open Dreambox again.
+Dreambox needs the network. Files are up to 4MB, and each account has 16MB.
+From the command line the drive is Dreambox:$, so *Cat Dreambox:$ works, and so does Dreambox:$.Letter in a save box.
