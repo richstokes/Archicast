@@ -344,6 +344,8 @@ static char small[512];   /* short replies */
 static int token_loaded;
 static char pair_device[64], pair_code[16];
 static uint64_t pair_until;
+static uint32_t task_handle; /* the icon bar task's, 0 when it isn't running */
+static int task_alone;       /* started again while running: open the drive and exit */
 
 static struct {
 	int active, entry, step, lstep;
@@ -1000,6 +1002,143 @@ static int box_func(void)
 void dreambox_init(uint32_t at)
 {
 	workspace = at;
+	task_handle = 0;
+}
+
+/* The task keeps its menu, icon and strings past the error block, which doubles
+ * as the poll block and the buffer for checking the drive. */
+#define T_POLL (workspace)
+#define T_MENU (workspace + 256)
+#define T_ICON (workspace + 332)
+#define T_NAME (workspace + 368)
+#define T_SPRITE (workspace + 380)
+#define T_DIR (workspace + 392)
+#define T_OPEN (workspace + 416)
+#define TASK_WORD 0x4B534154u /* "TASK" */
+#define POLL_MASK 0x1831u     /* no null, pointer or caret events */
+
+static void task_blocks(void)
+{
+	static const char *items[] = {"Open", "Quit"};
+	uint32_t menu[7 + 2 * 6] = {0}, icon[9];
+	int i;
+	memcpy(menu, "Dreambox", 8);
+	menu[3] = 0x00070207; /* title black on grey, items black on white */
+	menu[4] = 160;
+	menu[5] = 44;
+	for (i = 0; i < 2; i++) {
+		menu[7 + i * 6] = i == 1 ? 0x80 : 0; /* last item */
+		menu[8 + i * 6] = 0xFFFFFFFF;
+		menu[9 + i * 6] = 0x07000021;
+		memcpy(&menu[10 + i * 6], items[i], strlen(items[i]));
+	}
+	G->write(T_MENU, menu, sizeof(menu));
+	/* Left of the icon bar with the drives, text under the sprite like theirs */
+	icon[0] = 0xFFFFFFFE;
+	icon[1] = 0;
+	icon[2] = (uint32_t)-16;
+	icon[3] = 136;
+	icon[4] = 84;
+	icon[5] = 0x1700310B; /* text, sprite, centred, indirected, click */
+	icon[6] = T_NAME;
+	icon[7] = T_SPRITE;
+	icon[8] = 9;
+	G->write(T_ICON, icon, sizeof(icon));
+	G->write(T_NAME, "Dreambox", 9);
+	G->write(T_SPRITE, "S!dreambox", 11);
+	G->write(T_DIR, "Dreambox::Dreambox.$", 21);
+	G->write(T_OPEN, "Filer_OpenDir Dreambox::Dreambox.$", 35);
+}
+
+/* Opening the drive reads one entry first, so an error (the link code, say)
+ * comes up from Dreambox. Through the Filer it would gain "error when reading".
+ * The listing is cached, so the Filer gets it without another request. */
+void dreambox_task(uint32_t r[11], const guest_mem_t *mem)
+{
+	uint32_t block[5];
+	G = mem;
+	switch ((int)r[10]) {
+	case -1:
+		if (!workspace)
+			goto quit;
+		task_blocks();
+		if (task_handle) { /* already on the icon bar: open the drive and go */
+			task_alone = 1;
+			goto open;
+		}
+		r[0] = 200;
+		r[1] = TASK_WORD;
+		r[2] = T_NAME;
+		r[10] = TASK_INIT;
+		return;
+	case TASK_INIT:
+		if (r[0] >= 0x1000) /* an error, not a Wimp version */
+			goto quit;
+		task_handle = r[1];
+		task_alone = 0;
+		r[0] = 0;
+		r[1] = T_ICON;
+		r[10] = TASK_ICON;
+		return;
+	case TASK_ICON:
+		goto open;
+	case TASK_READ:
+		if (r[0] != 10) { /* r0 is the error */
+			r[1] = 1;
+			r[2] = T_NAME;
+			r[10] = TASK_REPORT;
+			return;
+		}
+		r[0] = T_OPEN;
+		r[10] = TASK_CLI;
+		return;
+	case TASK_REPORT:
+	case TASK_CLI:
+	case TASK_MENU:
+		if (task_alone)
+			goto quit;
+		goto poll;
+	case TASK_POLL:
+		G->read(T_POLL, block, sizeof(block));
+		if (r[0] == 6 && block[2] & 2) {
+			r[1] = T_MENU;
+			r[2] = block[0] - 64;
+			r[3] = 96 + 44 * 2;
+			r[10] = TASK_MENU;
+			return;
+		}
+		if (r[0] == 6 || (r[0] == 9 && block[0] == 0))
+			goto open;
+		if ((r[0] == 9 && block[0] == 1) || ((r[0] == 17 || r[0] == 18) && block[4] == 0)) {
+			r[0] = task_handle;
+			r[1] = TASK_WORD;
+			task_handle = 0;
+			r[10] = TASK_CLOSE;
+			return;
+		}
+		goto poll;
+	default: /* closed down */
+		goto quit;
+	}
+open:
+	r[0] = 10;
+	r[1] = T_DIR;
+	r[2] = T_POLL;
+	r[3] = 1;
+	r[4] = 0;
+	r[5] = 256;
+	r[6] = 0;
+	r[10] = TASK_READ;
+	return;
+poll:
+	r[0] = POLL_MASK;
+	r[1] = T_POLL;
+	r[10] = TASK_POLL;
+	return;
+quit:
+	r[0] = 0;
+	r[1] = 0;
+	r[10] = TASK_EXIT;
 }
 
 int dreambox_fs(uint32_t r[13], const guest_mem_t *mem)

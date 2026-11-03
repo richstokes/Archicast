@@ -22,6 +22,12 @@ typedef struct {
 int dreambox_fs(uint32_t r[13], const guest_mem_t *mem);
 void dreambox_init(uint32_t workspace);
 
+/* The icon bar task, which runs in the DreamApps module. That only issues the
+ * SWI this names in r[10], from the table in tools/mkapps.py, and comes back
+ * with its registers. r[10] is -1 on *Desktop_Dreambox. */
+enum { TASK_INIT, TASK_ICON, TASK_POLL, TASK_MENU, TASK_READ, TASK_REPORT, TASK_CLI, TASK_CLOSE, TASK_EXIT };
+void dreambox_task(uint32_t r[11], const guest_mem_t *mem);
+
 /* The console's link token survives power off where the platform can manage it */
 int plat_dreambox_load(char *token, int size); /* 1 if there was one */
 int plat_dreambox_save(const char *token);     /* "" forgets it; 0 once it will survive */

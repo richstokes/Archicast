@@ -120,10 +120,22 @@ PDRIVER_VERSION = 0x148 # the newest PDriverDP takes; has to fit a MOV
 XDREAM_PRINT_DUMP = 0xEF0EDC19  # X form of DreamNet SWI +25
 XDREAM_BOX_FS = 0xEF0EDC21      # +33, src/dreambox.c
 XDREAM_BOX_INIT = 0xEF0EDC22    # +34
+XDREAM_BOX_TASK = 0xEF0EDC23    # +35
 BOX_FS_NUMBER = 0xDC            # BOX_FS_NUMBER in src/dreambox.h
 BOX_FILES = 4                   # HANDLES there; FileSwitch refuses a fifth open
-BOX_WORKSPACE = 256             # RMA for the error block the SWI writes
+BOX_WORKSPACE = 512             # RMA for the error block, and the icon bar task's blocks
 BOX_ENTRIES = ["fs_open", "fs_get", "fs_put", "fs_args", "fs_close", "fs_file", "fs_func"]
+# The SWIs the icon bar task asks for, in the order of TASK_* in src/dreambox.h
+TASK_SWIS = [
+    0xEF0600C0,  # XWimp_Initialise
+    0xEF0600C2,  # XWimp_CreateIcon
+    0xEF0600C7,  # XWimp_Poll
+    0xEF0600D4,  # XWimp_CreateMenu
+    0xEF02000C,  # XOS_GBPB
+    0xEF0600DF,  # XWimp_ReportError
+    0xEF020005,  # XOS_CLI
+    0xEF0600DD,  # XWimp_CloseDown
+]
 PRINT_ERROR = b"The network printer failed. See !NetPrint for why.\0"
 
 
@@ -189,10 +201,12 @@ def arm_module():
 
 
 def box_entries():
-    """ROM offsets of the Dreambox veneers. FileSwitch reaches them only through the
-    filing system block, so the recompiler needs telling (tools/armxlat.py)."""
+    """ROM offsets of the Dreambox veneers and the task's SWI table. FileSwitch
+    reaches the veneers only through the filing system block, and the table only
+    through a computed jump, so the recompiler needs telling (tools/armxlat.py)."""
     labels = assemble(module_items(), want_labels=True)
-    return [MODULE_AT + 4 + labels[name] for name in BOX_ENTRIES]
+    names = BOX_ENTRIES + [f"task_{n}" for n in range(len(TASK_SWIS) + 1)]
+    return [MODULE_AT + 4 + labels[name] for name in names]
 
 
 def module_items():
@@ -209,18 +223,22 @@ def module_items():
     It also adds the Dreambox filing system. Each FileSwitch entry puts its number
     in r12, which FileSwitch doesn't need back, and calls DreamNet_BoxFS until r12
     stops saying 1 (call again). 2 means r0 points at an error.
+
+    *Desktop_Dreambox enters the module as the Dreambox icon bar task. Its code
+    is a loop that issues whichever SWI DreamNet_BoxTask names in r10, so all
+    the decisions are in src/dreambox.c and it needs no memory of its own.
     """
     title = b"DreamApps\0"
-    help_text = b"DreamApps\t0.04 (2 Nov 2026)\0"
+    help_text = b"DreamApps\t0.05 (2 Nov 2026)\0"
     return [
         "start",
-        0,                 # start
+        offset("task"),
         offset("init"),
         0,                 # final
         offset("service"),
         offset("title"),
         offset("help"),
-        0,                 # commands
+        offset("commands"),
         "init",
         0xE92D4100,        # STMFD sp!,{r8,lr}
         0xE3A0050F,        # MOV r0,#PACK_BASE
@@ -313,6 +331,31 @@ def module_items():
         0xE8BD4000,        # LDMFD sp!,{lr}
         0x33DEF201,        # BICCCS pc,lr,#V (r12 = 0, done)
         0xE39EF201,        # ORRS pc,lr,#V (r12 = 2, r0 -> error)
+        "commands",
+        b"Desktop_Dreambox\0",
+        offset("desktop"),
+        0x00FF0000,        # 0 to 255 parameters
+        0,                 # syntax
+        0,                 # help
+        0,                 # end of commands
+        "desktop",
+        0xE1A02000,        # MOV r2,r0 (the tail)
+        0xE3A00002,        # MOV r0,#2 (enter)
+        adr(1, "title"),   # ADR r1,title
+        0xEF02001E,        # SWI XOS_Module
+        0xE1A0F00E,        # MOV pc,lr
+        "task",
+        0xE3E0A000,        # MVN r10,#0 (just started)
+        "task_loop",
+        XDREAM_BOX_TASK,   # SWI XDreamNet_BoxTask
+        0xE08FF18A,        # ADD pc,pc,r10,LSL #3
+        0xE1A00000,        # NOP (skipped)
+        *(item for n, swi in enumerate(TASK_SWIS) for item in (
+            f"task_{n}",
+            swi,
+            branch(AL, "task_loop"))),
+        f"task_{len(TASK_SWIS)}",
+        0xEF000011,        # SWI OS_Exit
         "fsname",
         b"Dreambox\0",
         "title",

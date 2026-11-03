@@ -181,7 +181,8 @@ RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based 
 | +29 | PrintStatus | r0 -> 60 byte block: state, pages, bytes, text |
 | +30 to +32 | Find, FindLine, FindDrive | !Find's index search, see Software archive |
 | +33 | BoxFS | the Dreambox veneers, see Dreambox; out r12 = 0 done, 1 call again, 2 error in r0 |
-| +34 | BoxInit | r2 -> 256 bytes of RMA for error blocks |
+| +34 | BoxInit | r2 -> 512 bytes of RMA for error blocks and the icon bar task |
+| +35 | BoxTask | the icon bar task's next step: in r10 = the SWI just made (-1 on start), out r10 = the next one, r0-r7 its registers |
 
 Addresses are one word, most significant byte first. Blocks are laid out in `src/net.h`.
 
@@ -306,7 +307,7 @@ A filing system, `Dreambox:`, backed by an API on dcvmu.com. Once it's a real Fi
 2. `src/dreambox.c` does the rest natively. Each entry is a small state machine (protothreads) that hands one HTTP request at a time to a worker thread, so the desktop keeps its pointer while the network is busy
 3. The server stages writes in 32KB blocks and only replaces a file on commit, with unwritten blocks either kept (a file opened for update) or zero
 
-Linking: the first time, the error box says "log in at dcvmu.com, open Account, Archicast and enter ABCD-1234". Typing the code on the website links the console, and the token goes on the VMU (`DRISCBOX`). Mainly because our TLS can't check certificates, so a password typed on the console would be readable by anyone who can sit in the middle. The token can only reach the drive, and Unlink on the website revokes it. `!Run` lists the drive into `null:` before `Filer_OpenDir`, so the link message comes up on its own; otherwise the Filer tacks "error when reading Dreambox::Dreambox.$" onto it. The listing is cached, so the Filer gets it without another request. Each console that runs it unlinked gets its own code (held in RAM for 15 minutes), and every linked console sees the same drive.
+Linking: the first time, the error box says "log in at dcvmu.com, open Account, Archicast and enter ABCD-1234". Typing the code on the website links the console, and the token goes on the VMU (`DRISCBOX`). Mainly because our TLS can't check certificates, so a password typed on the console would be readable by anyone who can sit in the middle. The token can only reach the drive, and Unlink on the website revokes it. Opening the drive reads one entry before `Filer_OpenDir`, so the link message comes up from Dreambox; through the Filer it gains "error when reading Dreambox::Dreambox.$". The listing is cached, so the Filer gets it without another request. Each console that runs it unlinked gets its own code (held in RAM for 15 minutes), and every linked console sees the same drive.
 
 **No BASIC anywhere, and memory only while it's in use.** File data moves through one 32KB window shared by every open file and by whole-file loads and saves, freed once nothing is open. A directory listing is kept as the server's text, at most 16KB, so the Filer's paging and FileSwitch's constant "read catalogue info" calls don't each cost a round trip, and it goes once it's 5s stale. The keep-alive connection, with its TLS state, closes after 20s idle. Code is ~10KB of SH-4 and ~6KB of static buffers.
 
@@ -318,7 +319,7 @@ Linking: the first time, the error box says "log in at dcvmu.com, open Account, 
 - Limits are the server's: 4MB a file, 16MB and 2000 objects an account, 255 entries a directory, names of 1-32 characters with no spaces
 - Nothing is cached between sessions, so another machine's changes show up on the next look, within 5s
 - Open question: the veneer spins in SVC mode with interrupts on, the same as the printer dumper. Escape can't stop an operation, though each request gives up after 30s
-- Not in scope for now: an icon bar icon, which would need a Wimp task. The Apps folder does the job for now. Down the road a module task is the light way to add one
+- Icon bar: `!Run` runs `*Desktop_Dreambox`, which enters DreamApps as a Wimp task with a 0K slot. The module's part is ~20 words that issue whichever SWI `DreamNet_BoxTask` names in r10 (Wimp_Initialise, CreateIcon, Poll, CreateMenu, OS_GBPB, ReportError, OS_CLI, CloseDown, OS_Exit), and `dreambox_task()` decides everything else. Its blocks sit in the BoxInit RMA, so the task costs ~256 bytes of RMA where a BASIC one would take a 32KB page of the 4MB. Click opens the drive, Menu gives Open and Quit, and running `!Dreambox` again while it's there just opens the drive. The ROM gap has 28 bytes left after this
 
 ### Results
 
@@ -334,7 +335,9 @@ projects/dcvmu.com/service/.venv/bin/python tests/boxserver.py projects/dcvmu.co
 DREAM_DREAMBOX=http://127.0.0.1:8099 DREAM_DREAMBOX_TOKEN=build/box.token DREAM_REPLAY=tests/dreambox.replay ./build/archicast-host build/rom.bin assets/cmos.bin 150 build/shot.ppm
 ```
 
-The service path is in the dreamcast-homebrew repo. Leave out `DREAM_DREAMBOX_TOKEN` to see the linking error.
+The service path is in the dreamcast-homebrew repo. Leave out `DREAM_DREAMBOX_TOKEN` to see the linking error. `tests/dreambox-iconbar.replay` runs the same way for 156 seconds and covers the icon bar: start, click, menu, Quit and starting twice.
+
+11/2, icon bar on the harness: unlinked, the code comes up as "Error from Dreambox" with the icon already on the bar. A click after linking claimed the token and opened the drive on one listing request. Quit took the icon off, and two more starts left one icon. hd, scrap and sound moved sums with final screens identical to main, from the bigger RMA claim.
 
 ## Considerations
 

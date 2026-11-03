@@ -16,7 +16,7 @@ enum {
 	DN_SOCK_CONNECT, DN_SOCK_SEND, DN_SOCK_RECV, DN_SOCK_SENDTO, DN_SOCK_RECVFROM,
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
 	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
-	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE, DN_BOX_FS, DN_BOX_INIT,
+	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE, DN_BOX_FS, DN_BOX_INIT, DN_BOX_TASK,
 };
 
 #define ERR_INVAL 22
@@ -46,6 +46,8 @@ static void guest_string(u32 addr, char *dest, u32 size)
 	}
 	dest[i] = 0;
 }
+
+static const guest_mem_t box_mem = {guest_read, guest_write, guest_string};
 
 /* Addresses travel in one register, most significant byte first */
 static void ip_unpack(u32 v, u8 ip[4])
@@ -348,11 +350,10 @@ void net_swi(u32 op)
 		result = (s32)a;
 		break;
 	case DN_BOX_FS: { /* the Dreambox veneers: r12 says done, call again or error */
-		static const guest_mem_t mem = {guest_read, guest_write, guest_string};
 		u32 r[13];
 		for (a = 0; a < 13; a++)
 			r[a] = R(a);
-		result = dreambox_fs(r, &mem);
+		result = dreambox_fs(r, &box_mem);
 		if (result != BOX_AGAIN)
 			for (a = 0; a < 8; a++)
 				R(a) = r[a];
@@ -362,6 +363,16 @@ void net_swi(u32 op)
 	case DN_BOX_INIT:
 		dreambox_init(R(2));
 		break;
+	case DN_BOX_TASK: { /* the icon bar task: r10 names the next SWI */
+		u32 r[11];
+		for (a = 0; a < 11; a++)
+			r[a] = R(a);
+		dreambox_task(r, &box_mem);
+		for (a = 0; a < 8; a++)
+			R(a) = r[a];
+		R(10) = r[10];
+		return;
+	}
 	case DN_FIND_DRIVE: /* the archive is the drive that can't be written */
 		result = -1;
 		for (a = 0; a < HD_UNITS; a++)

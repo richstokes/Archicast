@@ -4,8 +4,8 @@ tests/draw.replay 182 07495017
 tests/adfs-open.replay 94 D8AB0E13 build/test.adf
 tests/lander.replay 122 1882B5DA
 tests/lander-exit.replay 156 09BBFA22
-tests/sound.replay 97 81A31F2F
-tests/hd.replay 180 F2E40032 - build/test-hd.img
+tests/sound.replay 97 2B8801C0
+tests/hd.replay 180 F69E063E - build/test-hd.img
 tests/ping.replay 102 DFCA821F
 tests/netsetup.replay 90 164FEE5A
 tests/tertis.replay 132 10E9D8A0
@@ -19,6 +19,6 @@ tests/taskwindow.replay 94 93FE9DB4
 tests/menus.replay 217 8ED18FD3
 tests/configure.replay 124 60C11776
 tests/romapps.replay 178 1A2A4554
-tests/scrap.replay 100 82390501 build/test.adf
+tests/scrap.replay 100 0BFEBB6D build/test.adf
 tests/drawsave.replay 158 57E1BF9C build/test.adf
 tests/netprint.replay 152 5E8D24C0

@@ -1,0 +1,32 @@
+# Dreambox on the icon bar, against tests/boxserver.py with a linked token:
+# start it (icon and drive window), click the icon, open the menu, quit, then
+# start it twice, which leaves one icon. Shots are for looking at, not checked.
+70 key 0 12 1
+70.1 key 0 12 0
+73 type filer_run resources:$.apps.!dreambox\n
+76 key 4 7 1
+76.1 key 4 7 0
+95 shot build/boxbar1.ppm
+100.2 move -1000 1000
+103 move 93 -24
+105 button 1
+105.1 button 0
+115.2 move 0 0
+116 button 2
+116.1 button 0
+120 shot build/boxbar2.ppm
+120.2 move 0 -17
+122 button 1
+122.1 button 0
+126 shot build/boxbar3.ppm
+127 key 0 12 1
+127.1 key 0 12 0
+130 type filer_run resources:$.apps.!dreambox\n
+133 key 4 7 1
+133.1 key 4 7 0
+140 key 0 12 1
+140.1 key 0 12 0
+143 type filer_run resources:$.apps.!dreambox\n
+146 key 4 7 1
+146.1 key 4 7 0
+155 shot build/boxbar4.ppm
