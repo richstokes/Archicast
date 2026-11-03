@@ -288,6 +288,65 @@ static void *worker(void *arg)
 	return NULL;
 }
 
+/* Settings files live on whichever VMU already has one, else the first that
+ * takes it, and only there, so a load can't find an older copy first. KOS only
+ * writes a file out when it's closed, so a full card fails in fs_close. */
+static void vmu_path(char *path, size_t size, maple_device_t *dev, const char *name)
+{
+	snprintf(path, size, "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, name);
+}
+
+static int vmu_write(maple_device_t *dev, const char *name, const void *data, size_t len)
+{
+	char path[32];
+	file_t f;
+	int ok;
+	vmu_path(path, sizeof(path), dev, name);
+	f = fs_open(path, O_WRONLY);
+	if (f == FILEHND_INVALID)
+		return -1;
+	ok = fs_write(f, data, len) == (ssize_t)len;
+	return fs_close(f) == 0 && ok ? 0 : -1;
+}
+
+static int vmu_has(maple_device_t *dev, const char *name)
+{
+	char path[32];
+	file_t f;
+	vmu_path(path, sizeof(path), dev, name);
+	f = fs_open(path, O_RDONLY);
+	if (f == FILEHND_INVALID)
+		return 0;
+	fs_close(f);
+	return 1;
+}
+
+/* Removes the file from every card but one; -1 for all of them */
+static void vmu_remove(const char *name, int keep)
+{
+	maple_device_t *dev;
+	char path[32];
+	int unit;
+	for (unit = 0; (dev = maple_enum_type(unit, MAPLE_FUNC_MEMCARD)); unit++)
+		if (unit != keep && vmu_has(dev, name)) {
+			vmu_path(path, sizeof(path), dev, name);
+			fs_unlink(path);
+		}
+}
+
+static int vmu_save(const char *name, const void *data, size_t len)
+{
+	maple_device_t *dev;
+	int pass, unit;
+	for (pass = 0; pass < 2; pass++)
+		for (unit = 0; (dev = maple_enum_type(unit, MAPLE_FUNC_MEMCARD)); unit++)
+			if ((pass || vmu_has(dev, name)) && vmu_write(dev, name, data, len) == 0) {
+				vmu_remove(name, unit);
+				return 0;
+			}
+	return -1;
+}
+
 /* Settings go in one VMU file. Any memory card will do. */
 static int config_path(char *path, size_t size, int unit)
 {
@@ -415,20 +474,10 @@ void plat_net_get_config(net_config_t *c)
 int plat_net_save_config(const net_config_t *c)
 {
 	struct { uint32_t magic; net_config_t config; } saved;
-	char path[32];
-	file_t f;
-	ssize_t put;
 	memcpy(&next_config, c, sizeof(*c));
-	if (!config_path(path, sizeof(path), 0))
-		return -1;
 	saved.magic = CONFIG_MAGIC;
 	memcpy(&saved.config, c, sizeof(*c));
-	f = fs_open(path, O_WRONLY);
-	if (f == FILEHND_INVALID)
-		return -1;
-	put = fs_write(f, &saved, sizeof(saved));
-	fs_close(f);
-	return put == sizeof(saved) ? 0 : -1;
+	return vmu_save(CONFIG_NAME, &saved, sizeof(saved));
 }
 
 int plat_print_load(print_config_t *c)
@@ -457,21 +506,9 @@ int plat_print_load(print_config_t *c)
 int plat_print_save(const print_config_t *c)
 {
 	struct { uint32_t magic; print_config_t config; } saved;
-	maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
-	char path[32];
-	file_t f;
-	ssize_t put;
-	if (!dev)
-		return -1;
-	snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, PRINT_CONFIG_NAME);
 	saved.magic = PRINT_CONFIG_MAGIC;
 	memcpy(&saved.config, c, sizeof(*c));
-	f = fs_open(path, O_WRONLY);
-	if (f == FILEHND_INVALID)
-		return -1;
-	put = fs_write(f, &saved, sizeof(saved));
-	fs_close(f);
-	return put == sizeof(saved) ? 0 : -1;
+	return vmu_save(PRINT_CONFIG_NAME, &saved, sizeof(saved));
 }
 
 void plat_net_connect(const net_config_t *c)
@@ -553,20 +590,12 @@ int plat_dreambox_load(char *token, int size)
 int plat_dreambox_save(const char *token)
 {
 	box_saved_t saved;
-	maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
-	char path[32];
-	file_t f;
-	ssize_t put;
-	if (!dev)
-		return -1;
-	snprintf(path, sizeof(path), "/vmu/%c%d/%s", 'a' + dev->port, dev->unit, BOX_CONFIG_NAME);
+	if (!token[0]) { /* forget it everywhere */
+		vmu_remove(BOX_CONFIG_NAME, -1);
+		return 0;
+	}
 	memset(&saved, 0, sizeof(saved));
 	saved.magic = BOX_CONFIG_MAGIC;
 	snprintf(saved.token, sizeof(saved.token), "%s", token);
-	f = fs_open(path, O_WRONLY);
-	if (f == FILEHND_INVALID)
-		return -1;
-	put = fs_write(f, &saved, sizeof(saved));
-	fs_close(f);
-	return put == sizeof(saved) ? 0 : -1;
+	return vmu_save(BOX_CONFIG_NAME, &saved, sizeof(saved));
 }

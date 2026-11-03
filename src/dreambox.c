@@ -344,6 +344,8 @@ static char small[512];   /* short replies */
 static int token_loaded;
 static char pair_device[64], pair_code[16];
 static uint64_t pair_until;
+static int token_unsaved;     /* linked, but no VMU took the token yet */
+static uint64_t save_retry;
 static uint32_t task_handle; /* the icon bar task's, 0 when it isn't running */
 static int task_alone;       /* started again while running: open the drive and exit */
 
@@ -382,6 +384,7 @@ static int request_error(void)
 {
 	if (req.status == 401) {
 		token[0] = 0;
+		token_unsaved = 0;
 		plat_dreambox_save("");
 		return dreambox_error("Dreambox was unlinked. Open it again to link this Dreamcast");
 	}
@@ -497,6 +500,15 @@ static void set_info(const object_t *o)
 /* --- linking --- */
 
 /* BOX_DONE once there's a token, else an error box with the code to type in */
+/* A VMU write takes a while, so a token no card would take is tried again at
+ * most every 30s, until a block is freed or a card goes in. */
+static int keep_token(void)
+{
+	token_unsaved = plat_dreambox_save(token) != 0;
+	save_retry = plat_wall_ms() + 30000;
+	return !token_unsaved;
+}
+
 static int link_step(void)
 {
 	switch (op.lstep) {
@@ -506,8 +518,11 @@ static int link_step(void)
 			if (!plat_dreambox_load(token, sizeof(token)))
 				token[0] = 0;
 		}
-		if (token[0])
+		if (token[0]) {
+			if (token_unsaved && plat_wall_ms() >= save_retry)
+				keep_token();
 			return BOX_DONE;
+		}
 		if (pair_device[0] && plat_wall_ms() < pair_until) {
 			target("pair/claim");
 			arg_text("device", pair_device);
@@ -520,8 +535,11 @@ static int link_step(void)
 				small[strcspn(small, "\r\n")] = 0;
 				snprintf(token, sizeof(token), "%.*s", (int)sizeof(token) - 1, small);
 				pair_device[0] = 0;
-				plat_dreambox_save(token);
 				op.lstep = 0;
+				if (!keep_token())
+					return dreambox_error("Dreambox is linked until you switch off. To keep the link it needs "
+						"a VMU with 1 free block, and saves as soon as there is one. Open Dreambox again "
+						"to carry on");
 				return BOX_DONE;
 			}
 			if (req.status == 202) {

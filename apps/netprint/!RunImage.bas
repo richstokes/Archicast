@@ -207,7 +207,7 @@ CASE i% OF
   WHEN 5
     PROCcollect
     SYS swi%+28,cfg% TO r%
-    IF r%=0 THEN PROCmessage("Saved to the VMU") ELSE PROCmessage("No VMU to save to")
+    IF r%=0 THEN PROCmessage("Saved to the VMU") ELSE PROCmessage("No VMU with a free block")
   WHEN 6: PROCcollect: PROCtest
 ENDCASE
 ENDPROC

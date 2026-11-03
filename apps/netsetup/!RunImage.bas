@@ -183,7 +183,7 @@ IF i%=btn%+1 THEN SYS swi%+2
 IF i%=btn%+2 THEN
   PROCcollect
   SYS swi%+8,cfg% TO r%
-  IF r%=0 THEN PROCmessage("Saved to the VMU") ELSE PROCmessage("No VMU to save to")
+  IF r%=0 THEN PROCmessage("Saved to the VMU") ELSE PROCmessage("No VMU with a free block")
   ENDPROC
 ENDIF
 IF i%>=btn% THEN PROCshow
