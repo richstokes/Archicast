@@ -22,12 +22,15 @@ def type_text(ms, text):
         lower = ch.lower()
         shift = ch.isupper() or ch in SHIFTED
         row, col = SHIFTED.get(ch) or KEYS[lower]
+        # A console can stall for longer than a short press, and RISC OS then misses
+        # the key, so hardware runs hold each one for TYPE_HOLD ms
+        hold = int(os.environ.get("TYPE_HOLD", "20"))
         if shift:
             key(ms, *SHIFT, 1)
         key(ms + 10, row, col, 1)
-        key(ms + 30, row, col, 0)
+        key(ms + 10 + hold, row, col, 0)
         if shift:
-            key(ms + 40, *SHIFT, 0)
+            key(ms + 20 + hold, *SHIFT, 0)
         ms += int(os.environ.get("TYPE_MS", "80"))
 
 

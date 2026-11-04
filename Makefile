@@ -88,6 +88,15 @@ build/archicast-interpall: src/mach.c src/interp.c src/cpu.h $(INTERP_OBJ)
 	$(HOSTCC) $(HOSTFLAGS) -O2 -DARM_INTERP -DARM_INTERP_ALL -c src/interp.c -o $(HOSTOBJ)/interp_a.o
 	$(HOSTCC) -o $@ $(INTERP_OBJ) $(HOSTOBJ)/mach_a.o $(HOSTOBJ)/interp_a.o
 
+# Per-instruction checks of the ARM interpreter, on the host
+.PHONY: interp-test
+interp-test: build/interp-test
+	./build/interp-test
+
+build/interp-test: tests/interp_test.c src/interp.c src/appunit.h src/cpu.h
+	@mkdir -p build
+	$(HOSTCC) -O1 -g -Isrc -fno-strict-aliasing -Wall -Wno-unused-function -Wno-unknown-pragmas -DARM_INTERP -o $@ tests/interp_test.c
+
 # Dreamcast build; run through scripts/build-dc.sh, which sources the KOS environment.
 DCOBJ = build/dc
 XLAT_DC = $(patsubst $(GEN)/%.c,$(DCOBJ)/%.o,$(XLAT_SRC))
@@ -104,12 +113,12 @@ $(DCOBJ)/mach.o: src/mach.c src/cpu.h
 
 $(DCOBJ)/interp.o: src/interp.c src/cpu.h
 	@mkdir -p $(DCOBJ)
-	$(KOS_CC) $(DCFLAGS) -O2 $(if $(HW_LOG),-DHW_LOG) -c $< -o $@
+	$(KOS_CC) $(DCFLAGS) -O2 $(if $(HW_LOG),-DHW_LOG) $(if $(HW_PERF),-DHW_PERF=$(HW_PERF)) -c $< -o $@
 
 # The build options are baked into these objects, so a change of options has to
 # rebuild them even though the sources did not change: a mach.o compiled without
 # ARM_INTERP next to a fresh interp.o leaves the image unable to run disc software.
-DC_OPTS = $(DCOBJ)/opts.$(INTERP).$(HW_LOG).$(HW_NO_SD).$(HW_NO_NET).$(HW_REPLAY).$(HW_DUMP).$(HW_AUTOFORMAT)
+DC_OPTS = $(DCOBJ)/opts.$(INTERP).$(HW_LOG).$(HW_NO_SD).$(HW_NO_NET).$(HW_REPLAY).$(HW_DUMP).$(HW_AUTOFORMAT).$(HW_PERF)
 $(DC_OPTS):
 	@mkdir -p $(DCOBJ)
 	@rm -f $(DCOBJ)/opts.*
@@ -130,7 +139,7 @@ $(DCOBJ)/hdformat.o: src/hdformat.c src/cpu.h
 
 $(DCOBJ)/main.o: src/dc/main.c src/cpu.h
 	@mkdir -p $(DCOBJ)
-	$(KOS_CC) $(DCFLAGS) $(if $(INTERP),-DARM_INTERP) $(if $(HW_NO_SD),-DHW_NO_SD) $(if $(HW_AUTOFORMAT),-DHW_AUTOFORMAT) $(if $(HW_LOG),-DHW_LOG '-DPC_ROOT="$(CURDIR)/build/disc"') $(if $(HW_REPLAY),-DHW_REPLAY -Ibuild) $(if $(HW_DUMP),-DHW_DUMP) -c $< -o $@
+	$(KOS_CC) $(DCFLAGS) $(if $(INTERP),-DARM_INTERP) $(if $(HW_NO_SD),-DHW_NO_SD) $(if $(HW_AUTOFORMAT),-DHW_AUTOFORMAT) $(if $(HW_LOG),-DHW_LOG '-DPC_ROOT="$(CURDIR)/build/disc"') $(if $(HW_REPLAY),-DHW_REPLAY -Ibuild) $(if $(HW_DUMP),-DHW_DUMP) $(if $(HW_PERF),-DHW_PERF=$(HW_PERF)) -c $< -o $@
 
 $(DCOBJ)/net.o: src/net.c src/net.h src/print.h src/web.h src/dreambox.h src/cpu.h
 	@mkdir -p $(DCOBJ)

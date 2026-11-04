@@ -27,6 +27,18 @@ RISC OS copies and generates a little code at runtime (the IRQ head, SWI stubs, 
 
 **This is an emulated ARM CPU, so to be plain about it:** anything without a recompiled block runs this way. It's slow, as every instruction is decoded each time it runs. Nothing is generated at runtime, so it's not a JIT. RISC OS and bundled apps stay native.
 
+11/3 update, speed on the console. `HW_PERF=<event>` builds count SH-4 cycles spent in the interpreter, plus one performance counter event, and report them per ARM instruction in the heartbeat (0x24 is I-cache stall cycles, 0x25 D-cache).
+
+- The old switch took ~125 cycles per ARM instruction on Star Fighter 3000's title, ~1.25 ARM MIPS, so the game drew ~3.6 frames/s
+- A rewrite with a case per opcode cut the SH-4 instructions a lot and gained nothing: at ~23KB of code, I-cache stalls went from ~3 to ~25 cycles per instruction. The 8KB I-cache is what matters here
+- The version in tree dispatches on bits 27-20 through a table of label offsets (GCC's labels as values, as CPython and Lua's interpreters do), then data processing jumps through a second table by opcode. It shares operand and tail code, ~7KB. ~90-100 cycles per instruction on the same title, so ~25-30% faster. D-cache stalls are only ~4 cycles, so what's left is the SH-4 pipeline running decode code
+- Lemmings needs far less: it ran 57 game seconds in 60 real ones before any of this, so its problems were display and sound, below
+- Star Fighter's WFE splash sits for ~45-50s on the console with every version, and ~55s on the harness, where the interpreter is mostly idle. So that wait is the game's, not ours. A key or a click doesn't skip it
+
+The next real step would be predecoding instructions so the hot loop does less work, which I'd guess is another 1.5x. Not tried yet. Every change here is checked against all replays through `archicast-interp` and `archicast-interpall`, whose screen sums must come out bit for bit the same, as the decode semantics and poll timing don't change.
+
+The replays rarely reach odd corners like RSC, RRX without S, shifts by 32 or more, `LDM ^` or the pipeline quirk, so `make interp-test` (`tests/interp_test.c`) runs 306 cases on the host: ~50 hand-worked instructions, plus every condition code against every combination of flags. It includes `interp.c` directly with stub page tables and PSR writes. The original interpreter passes it too, and so that it doesn't just agree with itself, a dozen deliberately broken copies (a wrong carry, a lost writeback, RRX without the old carry) were each caught. `ship.sh` runs it.
+
 Without the interpreter (`INTERP=`, or the default harness), each known instruction word gets one precompiled routine that takes its PC as an argument, looked up by word. SWI words, branch words and the `LDMIA r12!,{list}` that C apps build on the stack for SWI veneers share a routine each, since those read the word for their number, offset or register list. Unknown words do not run there, so new ARM binaries cannot either.
 
 ## Disc streaming
@@ -98,6 +110,25 @@ Things to watch out for:
 - Windows sit ~16 pointer units lower than they did in mode 12, while the icon bar stays anchored to the bottom. The replays were moved to match
 - On a TV cable KOS outputs 640x480 interlaced, so 1 pixel lines will flicker, where the line doubled 256 line modes did not. VGA is fine. Untested on a real TV, and if it's bad the answer is probably to pick mode 12 at boot by cable type
 - VSync stays at 50Hz, though real mode 27 is 60Hz. Nothing seems to care
+
+### Palette splits on a console (11/3)
+
+Lemmings sets the playfield palette in its frame interrupt and switches to the panel's at line 178, from a 15ms timer it starts there. On the console the panel flashed and the whole screen would take the wrong colours, for reasons the harness can't show, since presenting takes no time there:
+
+- `present()` runs inside the frame tick and took several ms, up to ~40ms per frame in Lemmings. The timers were then stepped through all of it, so the timer the frame interrupt had just started ran out early and the split landed anywhere from line 1 to 240
+- A present longer than a frame brought the next frame interrupt due at once, so it arrived together with the timer's and one palette won for the whole screen
+- Every moved split repainted those lines, so the presenter took ~50% of the CPU, which made it all worse
+
+Now the machine stands still while the platform presents. `plat_frame()` returns how long it took, timers 1-3 skip it, the frame starts once it's done, and the next frame interrupt waits, if it has to, for one display period (~16.4ms). A 50Hz game only slows when a present overruns flyback (3.6ms), and Lander's 40ms frame only past ~23ms. Timer 0 keeps counting, as it's the OS clock and stopping it would make the time of day drift, and sound stays on real time.
+
+Lander still holds 25 frames/s on the console with this (119-125 game frames per 5s).
+
+Console results, Lemmings level 1, per 5s: splits went from ~240 frames at random lines to ~235 starting at line 178 (harness: 178), presenting from ~2.5s to ~0.45s, and game frames from 61 to 80. Some frames still split late, up to ~line 200-235, as a timer that runs out between two polls is only seen at the second, and a slow guest can be inside another interrupt handler by then. Two attempts at timing the write from when the interrupt was raised cut that to ~200-220, but were dropped: the gain was small for the bookkeeping, and the one using the exact expiry time hung at boot 3 times in 3 on the console, in the race below.
+
+Of note:
+
+- The vertical sync rate drops while presenting is slow. Games tied to it run slower, rather than glitching
+- The presenter now widens 4bpp lines with a 256-entry table per byte, which is what Lemmings mostly needs
 
 ## Sound
 
@@ -357,6 +388,8 @@ tools/converge.sh tests/apps.replay 136
 
 Replays hold `move`, `button`, `key` and `shot` lines. Slam to a corner first for a fixed origin. Pointer scale is ~1.5px per unit across and down in mode 27, ~0.75 down in mode 12.
 
+Presenting takes no time on the harness. `DREAM_PRESENT_US=n` makes each frame take n µs, as on a console where the machine stands still meanwhile, and `DREAM_PRESENT_RAND=1` makes that a random amount up to n.
+
 The harness and the screen checksums read guest RAM, so neither one sees bugs in the Dreamcast display path in `src/dc/main.c`. Check that in Flycast by eye. A window capture goes stale while another window covers Flycast, so check an `HW_DUMP=1` framebuffer dump as well. `dump_screen` only fires on a replay's seventh `shot`, and serial is slow, so a dump takes a few minutes.
 
 ## Hardware Results (10/31)
@@ -365,9 +398,11 @@ The Good: 8 of 9 boots reached the desktop, checksum `C50F35BC`, same as the har
 
 The Bad: boot 2 stuck at the 1bpp screen (`66733280`) for 90s+ with polls taking ~73us instead of ~15us. That looks like an interrupt or keyboard retry storm, but that's a guess: the run had no PC logging. 88 randomised clock runs on the harness and 6 more console boots did not reproduce it.
 
+11/3 update: caught it with PC logging. Every poll sits at `3813C34`, a shift and subtract division in the kernel's mode change, whose divisor is the low half of the word at `0x110` times 48. If that's 0 the loop never ends. On the harness the kernel sets `0x110` to `FFFFFFFF`, then 0 at ~8.77s, then `0x19000` ~26ms later, so the division must have run inside that window. One console build hung there on all 3 boots while its neighbours booted fine, and the only difference was presenter timing, so it's a race that timing can line up. Random present times on the harness (72 boots) didn't reproduce it. Open question: what runs the mode change during that window. The build merged after this booted 7 of 8 times with no hang there; the eighth stopped before its first frame and printed nothing, which looks more like dcload than this.
+
 Not checked: actual speed under load (polls count branches and IO, so they are not a MIPS figure), physical input, and what the video output looks like on a screen.
 
-Heartbeat builds use `HW_LOG=1`, and `HW_REPLAY=1` adds a generated `build/replay.h` from `tools/replay2c.py`. Screen checksums are the only way to verify a console run unattended. If a boot is stuck in 1bpp at 30s the heartbeat dumps IOC state and recent SWIs.
+Heartbeat builds use `HW_LOG=1`, and `HW_REPLAY=1` adds a generated `build/replay.h` from `tools/replay2c.py`. Typing on a console used to drop keys: after a stall, such as a heartbeat `printf` over dcload with interrupts off, a key's press and release landed in one poll and RISC OS never saw it. Replay key events now go at least 40ms apart, and `TYPE_HOLD=150 TYPE_MS=350` holds keys longer. That got a 50 character `run` line in whole on 10 of 12 console runs; the other two still lost keys, so check the screen dump before trusting a run. Screen checksums are the only way to verify a console run unattended. If a boot is stuck in 1bpp at 30s the heartbeat dumps IOC state and recent SWIs.
 
 Lander on the console (10/31): 124-125 game frames per 5s for a whole scripted flight, ~60% of the CPU left over in the heaviest scene, launch with no visible stall over dcload. Before pacing, the profile put the heavy scene at ~22% vertex projection (software division), ~23% triangle setup and ~12% span fills.
 

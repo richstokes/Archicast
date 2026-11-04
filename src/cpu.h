@@ -207,7 +207,7 @@ u32 plat_hd_sectors(int unit);  /* 0 when nothing is attached there */
 int plat_hd_writable(int unit); /* the card is; a disc streamed off the CD is not */
 int plat_hd_read(int unit, u32 lba, u8 *dest);
 int plat_hd_write(int unit, u32 lba, const u8 *src);
-void plat_frame(const screen_t *screen);
+u32 plat_frame(const screen_t *screen); /* returns the microseconds it took */
 void plat_poll_input(void);
 void plat_sound(const s16 *stereo, int frames, int rate); /* interleaved left, right */
 void plat_log(const char *fmt, ...);

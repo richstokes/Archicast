@@ -12,6 +12,7 @@ git rebase origin/main
 make gen | tail -1
 rm -rf build/host build/dc build/archicast-host
 make -j16 host 2>&1 | { ! grep -E " error|Undefined"; }
+make interp-test | tail -1
 scripts/build-dc.sh --skip-gen > build/ship.log 2>&1 || { tail -5 build/ship.log; exit 1; }
 check() {
   gunzip -c assets/adfs.adf.gz > build/test.adf

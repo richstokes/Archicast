@@ -97,13 +97,27 @@ static void write_shot(void)
 	fclose(f);
 }
 
-void plat_frame(const screen_t *screen)
+u32 plat_frame(const screen_t *screen)
 {
 	last = *screen;
 	frames++;
 	if (virtual_us >= stop_us) {
 		write_shot();
 		mach_stop();
+	}
+	/* Virtual time: presenting is instant, unless DREAM_PRESENT_US asks for it to
+	 * take that long, as it does on a console, where the machine stands still */
+	{
+		static int cost = -1;
+		if (cost < 0)
+			cost = getenv("DREAM_PRESENT_US") ? atoi(getenv("DREAM_PRESENT_US")) : 0;
+		u32 took = (u32)cost;
+		if (cost && getenv("DREAM_PRESENT_RAND")) {
+			jitter = jitter * 1103515245u + 12345u;
+			took = (jitter >> 8) % (u32)cost;
+		}
+		virtual_us += took;
+		return took;
 	}
 }
 

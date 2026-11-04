@@ -5,6 +5,9 @@
 #include <dc/sound/stream.h>
 #include <dc/sd.h>
 #include <arch/cache.h>
+#ifdef HW_PERF
+#include <dc/perfctr.h>
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,8 +31,12 @@ static u32 wrapped[160];
 static uint16_t row[640] __attribute__((aligned(32)));
 static uint16_t luts[2][256];
 static u32 lut_pairs[2][256];
+/* 4bpp: a source byte is two pixels, so one lookup gives both, or all four once
+ * a low resolution line is doubled */
+static u32 lut_nibbles[2][256], lut_quads[2][256][2];
 static const uint16_t *lut = luts[0];
-static const u32 *lut_pair = lut_pairs[0];
+static const u32 *lut_pair = lut_pairs[0], *lut_nibble = lut_nibbles[0];
+static const u32 (*lut_quad)[2] = lut_quads[0];
 static u32 last_pal[2][20];
 static int last_w, last_h, last_bpp, frame_count;
 static u32 last_start;
@@ -332,6 +339,13 @@ static void build_lut(const screen_t *s, const u32 *palette, int set)
 		luts[set][i] = vidc_565(e);
 		lut_pairs[set][i] = luts[set][i] * 0x10001u;
 	}
+	if (s->bpp == 4)
+		for (i = 0; i < 256; i++) {
+			u32 lo = luts[set][i & 15], hi = luts[set][i >> 4];
+			lut_nibbles[set][i] = lo | (hi << 16);
+			lut_quads[set][i][0] = lo * 0x10001u;
+			lut_quads[set][i][1] = hi * 0x10001u;
+		}
 }
 
 /* Fills row at the output width. Low resolution modes have fewer pixels on the
@@ -343,6 +357,19 @@ static void expand_line(const screen_t *s, const u8 *src, int width, int scale)
 		u32 *out = (u32 *)row;
 		for (x = 0; x < width; x++)
 			out[x] = lut_pair[src[x]];
+		return;
+	}
+	if (s->bpp == 4 && scale <= 2) {
+		u32 *out = (u32 *)row;
+		if (scale == 2)
+			for (x = 0; x < width >> 1; x++) {
+				const u32 *q = lut_quad[src[x]];
+				out[x * 2] = q[0];
+				out[x * 2 + 1] = q[1];
+			}
+		else
+			for (x = 0; x < width >> 1; x++)
+				out[x] = lut_nibble[src[x]];
 		return;
 	}
 	switch (s->bpp) {
@@ -425,7 +452,7 @@ static uint64_t present_us;
 
 /* Redraw only lines that changed. A screen bank flip always means a new picture,
  * otherwise 25Hz is enough. */
-void plat_frame(const screen_t *s)
+static void present_frame(const screen_t *s)
 {
 #ifdef HW_REPLAY
 	replay_screen = *s;
@@ -461,11 +488,30 @@ void plat_frame(const screen_t *s)
 			printf("\n");
 			memset(mach_prof, 0, sizeof(mach_prof));
 		}
+		{
+			extern u32 mach_splits;
+			extern int mach_split_min, mach_split_max;
+			printf("splits=%lu lines %d-%d\n", (unsigned long)mach_splits, mach_split_min, mach_split_max);
+			mach_splits = 0;
+			mach_split_min = 9999;
+			mach_split_max = -1;
+		}
 #ifdef ARM_INTERP
 		{
 			extern u32 arm_insns;
 			static u32 last_insns;
 			printf("arm insns=%lu in 5s\n", (unsigned long)(arm_insns - last_insns));
+#ifdef HW_PERF
+			{
+				extern u32 interp_cycles, interp_events;
+				u32 n = arm_insns - last_insns;
+				printf("perf interp=%lums cyc/insn=%lu event%d=%lu per insn x100=%lu\n",
+					(unsigned long)(interp_cycles / 200000), (unsigned long)(n ? interp_cycles / n : 0),
+					HW_PERF, (unsigned long)interp_events,
+					(unsigned long)(n ? (uint64_t)interp_events * 100 / n : 0));
+				interp_cycles = interp_events = 0;
+			}
+#endif
 			last_insns = arm_insns;
 		}
 #endif
@@ -537,6 +583,8 @@ void plat_frame(const screen_t *s)
 			sums[y] = sum;
 			lut = luts[part];
 			lut_pair = lut_pairs[part];
+			lut_nibble = lut_nibbles[part];
+			lut_quad = lut_quads[part];
 			expand_line(s, src, width, scale);
 			overlay_cursor(s, y, width, scale);
 			put_row(y, height, width * scale);
@@ -559,6 +607,14 @@ void plat_frame(const screen_t *s)
 #ifdef HW_LOG
 	present_us += timer_us_gettime64() - now;
 #endif
+}
+
+/* The machine stands still meanwhile, so it needs to know how long this took */
+u32 plat_frame(const screen_t *s)
+{
+	uint64_t start = timer_us_gettime64();
+	present_frame(s);
+	return (u32)(timer_us_gettime64() - start);
 }
 
 /* The machine layer fills a ring and a thread feeds it to the AICA, so sound keeps
@@ -726,10 +782,18 @@ static void dump_screen(int id)
 
 static void replay_step(int *dx, int *dy, int *buttons)
 {
+	static u32 last_key_ms;
 	u32 now = (u32)(timer_us_gettime64() / 1000);
 	while (replay_pos < sizeof(replay_events) / sizeof(replay_events[0]) &&
 	       now >= replay_events[replay_pos].ms) {
-		const replay_t *e = &replay_events[replay_pos++];
+		const replay_t *e = &replay_events[replay_pos];
+		/* After a stall (dcload printf runs with interrupts off) a key's press and
+		 * release would both land in one poll, and RISC OS would never see it */
+		if (e->verb == 'k' && now - last_key_ms < 40)
+			break;
+		replay_pos++;
+		if (e->verb == 'k')
+			last_key_ms = now;
 		if (e->verb == 'm') {
 			replay_dx += e->a;
 			replay_dy += e->b;
@@ -847,6 +911,9 @@ int main(int argc, char **argv)
 	fb_addr[1] = vram_s;
 	back_fb = 1;
 	clear_buffers();
+#ifdef HW_PERF
+	perf_cntr_start(PRFC1, HW_PERF, PMCR_COUNT_CPU_CYCLES);
+#endif
 	sound_start();
 #ifndef HW_NO_SD /* a card replaces the floppy, and these tests need the floppy */
 	sd_open();

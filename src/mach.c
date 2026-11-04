@@ -1231,7 +1231,14 @@ void dispatch(u32 pc)
 	TAIL(find_block(pc)(pc));
 }
 
-static void present(void)
+#ifdef HW_LOG
+/* Frames with a palette split and the range of lines it fell on, for the heartbeat */
+u32 mach_splits;
+int mach_split_min = 9999, mach_split_max = -1;
+#endif
+
+/* Returns the microseconds the platform took to show it */
+static u32 present(void)
 {
 	screen_t s;
 	int bpp = 1 << ((vidc.cr >> 2) & 3);
@@ -1246,6 +1253,15 @@ static void present(void)
 	s.palette = split_line >= 0 ? pal_top : vidc.reg;
 	s.palette2 = vidc.reg;
 	s.split_line = split_line;
+#ifdef HW_LOG
+	if (split_line >= 0) {
+		mach_splits++;
+		if (split_line < mach_split_min)
+			mach_split_min = split_line;
+		if (split_line > mach_split_max)
+			mach_split_max = split_line;
+	}
+#endif
 	s.cursor_palette[0] = vidc.reg[0x11];
 	s.cursor_palette[1] = vidc.reg[0x12];
 	s.cursor_palette[2] = vidc.reg[0x13];
@@ -1257,7 +1273,7 @@ static void present(void)
 	}
 	s.cursor_y = vidc.cys - (vidc.vdstart - 1);
 	s.cursor_h = vidc.cye - vidc.cys;
-	plat_frame(&s);
+	return plat_frame(&s);
 }
 
 /* --- sound ---
@@ -1352,7 +1368,7 @@ static void step_timer(int n, u32 ticks)
 static void machine_tick(void)
 {
 	uint64_t now = plat_time_us();
-	u32 delta = (u32)(now - last_us);
+	u32 delta = (u32)(now - last_us), took;
 	int n;
 	last_us = now;
 	for (n = 0; n < 4; n++)
@@ -1365,8 +1381,26 @@ static void machine_tick(void)
 		flyback_end_us = now + 2000;
 		flyback = 1;
 		ioc.irqa |= IRQA_VBLANK;
-		present();
+		took = present();
 		split_line = -1;
+		/* The machine stands still while the platform presents, which takes
+		 * milliseconds on a console. Its timers skip that time and the frame starts
+		 * once presenting is done. Otherwise the raster interrupt a game sets from
+		 * the frame interrupt fires early, and its palette split lands on the wrong
+		 * line, or gets no line at all. The next frame waits, if it must, until the
+		 * display has had time to run. Timer 0 keeps counting, as it is the OS
+		 * clock, and stopping it would make the time of day drift. On the harness
+		 * presenting takes no time. */
+		if (took) {
+			int lines = vidc.vdend - vidc.vdstart;
+			uint64_t display_us = (uint64_t)(lines > 0 && lines < 256 ? lines : 256) * 64;
+			step_timer(0, took * 2);
+			now += took;
+			last_us = now;
+			if (next_frame_us < now + display_us)
+				next_frame_us = now + display_us;
+			flyback_end_us = now + 2000;
+		}
 		frame_start_us = (u32)now;
 	} else if (flyback && now >= flyback_end_us) {
 		flyback = 0;
@@ -1460,6 +1494,12 @@ void mach_dump(void)
 			for (i = 0; i < 0x200000 / 4; i++)
 				if (arm_hist_rom[i])
 					plat_log("prof %07X %u\n", 0x3800000u + i * 4, arm_hist_rom[i]);
+		}
+		{
+			extern u32 arm_hist_rma[];
+			for (i = 0; i < 0x200000 / 4; i++)
+				if (arm_hist_rma[i])
+					plat_log("prof %07X %u\n", 0x1800000u + i * 4, arm_hist_rma[i]);
 		}
 	}
 #endif
