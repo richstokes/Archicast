@@ -121,6 +121,7 @@ XDREAM_PRINT_DUMP = 0xEF0EDC19  # X form of DreamNet SWI +25
 XDREAM_BOX_FS = 0xEF0EDC21      # +33, src/dreambox.c
 XDREAM_BOX_INIT = 0xEF0EDC22    # +34
 XDREAM_BOX_TASK = 0xEF0EDC23    # +35
+XDREAM_RESET = 0xEF0EDC24       # +36
 BOX_FS_NUMBER = 0xDC            # BOX_FS_NUMBER in src/dreambox.h
 BOX_FILES = 4                   # HANDLES there; FileSwitch refuses a fifth open
 BOX_WORKSPACE = 512             # RMA for the error block, and the icon bar task's blocks
@@ -227,9 +228,13 @@ def module_items():
     *Desktop_Dreambox enters the module as the Dreambox icon bar task. Its code
     is a loop that issues whichever SWI DreamNet_BoxTask names in r10, so all
     the decisions are in src/dreambox.c and it needs no memory of its own.
+
+    Ctrl+Break is a soft reset: the RMA and system variables stay, init does not
+    run again, and modules only get Service_Reset. No task survives it, so that
+    tells src/net.c to forget the ones it knew were running.
     """
     title = b"DreamApps\0"
-    help_text = b"DreamApps\t0.05 (2 Nov 2026)\0"
+    help_text = b"DreamApps\t0.06 (3 Nov 2026)\0"
     return [
         "start",
         offset("task"),
@@ -272,12 +277,18 @@ def module_items():
         "cmd2",
         SCRAP_CMDS[1],
         "service",
+        0xE3310027,        # TEQ r1,#&27 (Service_Reset)
+        branch(EQ, "reset"),
         0xE3510060,        # CMP r1,#&60 (Service_ResourceFSStarting)
         0x11A0F00E,        # MOVNE pc,lr
         0xE92D4001,        # STMFD sp!,{r0,lr}
         0xE3A0050F,        # MOV r0,#PACK_BASE
         0xE1A0E00F,        # MOV lr,pc
         0xE1A0F002,        # MOV pc,r2
+        0xE8BD8001,        # LDMFD sp!,{r0,pc}
+        "reset",
+        0xE92D4001,        # STMFD sp!,{r0,lr}
+        XDREAM_RESET,      # SWI XDreamNet_Reset
         0xE8BD8001,        # LDMFD sp!,{r0,pc}
         "dumper",
         0xE33B0002,        # TEQ r11,#2

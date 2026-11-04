@@ -77,6 +77,14 @@ The Logo canvas is a mode 27 sprite plotted into a window with no background. Wi
 
 Flycast check (10/31): launched Logo and picked Tree from the menu from a disc image, matching the harness at all four checkpoints, and a full framebuffer dump looks right. One earlier dump showed the turtle still on screen after `HT` with matching checksums. Two more runs were clean and both buffers matched guest memory, so no idea why, but keep an eye on it. Not run on a real console yet, and typing has only run on the harness, which sometimes drops a key around the 15th character of a `type` line since the rebase. Cause unknown.
 
+### Ctrl+Break (11/3)
+
+Ctrl+Break is a soft reset on 3.11. RAM, the RMA and system variables all survive, module init doesn't run again, and modules only get Service_Reset to tidy up. The Wimp frees its tasks there, so nothing comes back on its own. **Anything that remembers "I'm running" outside the Wimp has to be cleared on Service_Reset**, or the app refuses to start again afterwards.
+
+That bit `!Find`, whose `Find$Running` variable outlived the reset ("Find is already on the icon bar"), and Dreambox, whose native task handle did. Going by the code, starting Dreambox again would only open the drive and leave no icon. `DreamApps` now answers Service_Reset with `DreamNet_Reset`, which clears both, and Find's flag lives in `src/net.c` (`DN_FIND_RUNNING`).
+
+The harness can't reproduce apps coming back by themselves after Ctrl+Break. 120 resets spread over 4.4s with five apps running, a second Ctrl+Break at 120 points through the reboot, one mid Lander, and the interpreter build all came back to the clean desktop. Open question: what was running when it happened on the console?
+
 ## Storage
 
 `src/fdc.c` is a native driver behind the WD1772 registers, so RISC OS's own ADFS and FileCore run unchanged, including their FIQ byte transfers. The disc (`assets/adfs.adf.gz`) is an 800KB ADFS E image that RISC OS formatted itself on the harness via `tests/format.replay`. It loads into RAM at boot, so writes work but vanish at power off. Only 9 of its 800 sectors hold real data, so blank ones just record their fill byte and get memory when first written. That saves ~790KB.

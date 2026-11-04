@@ -2,18 +2,20 @@ REM Find: searches the archive disc's index, then walks the other drives
 REM The search itself is native, see DN_FIND in src/net.c
 DIM b% 2048, q% 64, stat% 80, walkbuf% 1024
 swi%=&CDC00
-findop%=30: lineop%=31: driveop%=32
+findop%=30: lineop%=31: driveop%=32: runop%=37
 maxres%=200: rowh%=40: wide%=1216: namecol%=36: task%=0
 DIM res%(maxres%-1), live$(maxres%-1), stack$(100)
 buf%=0: bufend%=0: first%=0: count%=0: sel%=-1
 apps%=FALSE: sp%=0: walking%=FALSE: pend$="": pendat%=0: quit%=FALSE
 $q%="": $stat%="Type a name and press Return"
+REM Native, not a system variable, which would outlive Ctrl+Break
+SYS swi%+runop%,1 TO was%
+IF was% THEN !b%=0: $(b%+4)="Find is already on the icon bar": SYS "Wimp_ReportError",b%,1,"Find": END
 ON ERROR PROCfail: END
 SYS swi%+driveop% TO arc%
 SYS "Wimp_Initialise",200,&4B534154,"Find" TO ,task%
 PROCwindows
 PROCiconbar
-OSCLI "Set Find$Running 1"
 PROCshow
 REPEAT
   SYS "OS_ReadMonotonicTime" TO now%
@@ -31,7 +33,7 @@ REPEAT
     WHEN 17,18: IF b%!16=0 THEN quit%=TRUE
   ENDCASE
 UNTIL quit%
-OSCLI "Unset Find$Running"
+SYS swi%+runop%,0
 SYS "Wimp_CloseDown",task%,&4B534154
 END
 
@@ -39,7 +41,7 @@ DEF PROCfail
 !b%=ERR
 $(b%+4)=REPORT$+" at line "+STR$(ERL)+CHR$(0)
 SYS "Wimp_ReportError",b%,1,"Find"
-OSCLI "Unset Find$Running"
+SYS swi%+runop%,0
 SYS "Wimp_CloseDown",task%,&4B534154
 ENDPROC
 

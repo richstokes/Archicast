@@ -1020,7 +1020,13 @@ static int box_func(void)
 void dreambox_init(uint32_t at)
 {
 	workspace = at;
+	dreambox_reset();
+}
+
+void dreambox_reset(void)
+{
 	task_handle = 0;
+	task_alone = 0;
 }
 
 /* The task keeps its menu, icon and strings past the error block, which doubles

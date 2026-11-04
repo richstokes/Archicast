@@ -21,6 +21,8 @@ typedef struct {
  * BOX_ERROR r[0] points at an error block in the workspace from dreambox_init. */
 int dreambox_fs(uint32_t r[13], const guest_mem_t *mem);
 void dreambox_init(uint32_t workspace);
+/* A soft reset keeps the module's workspace but ends every task */
+void dreambox_reset(void);
 
 /* The icon bar task, which runs in the DreamApps module. That only issues the
  * SWI this names in r[10], from the table in tools/mkapps.py, and comes back

@@ -17,6 +17,7 @@ enum {
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
 	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
 	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE, DN_BOX_FS, DN_BOX_INIT, DN_BOX_TASK,
+	DN_RESET, DN_FIND_RUNNING,
 };
 
 #define ERR_INVAL 22
@@ -206,6 +207,7 @@ void net_swi(u32 op)
 	static u8 line[512];
 	static print_config_t print_config;
 	static print_status_t print_state;
+	static int find_running;
 	u8 ip[4];
 	u32 a, b;
 	s32 result = 0;
@@ -373,6 +375,14 @@ void net_swi(u32 op)
 		R(10) = r[10];
 		return;
 	}
+	case DN_RESET: /* from DreamApps on Service_Reset: Ctrl+Break kept memory, but no task survived */
+		dreambox_reset();
+		find_running = 0;
+		break;
+	case DN_FIND_RUNNING: /* r0 = 1 to claim, 0 to let go; says whether it was claimed */
+		result = find_running;
+		find_running = R(0) != 0;
+		break;
 	case DN_FIND_DRIVE: /* the archive is the drive that can't be written */
 		result = -1;
 		for (a = 0; a < HD_UNITS; a++)
