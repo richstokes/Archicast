@@ -491,7 +491,10 @@ static void present_frame(const screen_t *s)
 		{
 			extern u32 mach_splits;
 			extern int mach_split_min, mach_split_max;
-			printf("splits=%lu lines %d-%d\n", (unsigned long)mach_splits, mach_split_min, mach_split_max);
+			u32 mach_peek(u32 addr);
+			/* the kernel's speed calibration, which a mode change divides by */
+			printf("splits=%lu lines %d-%d calib=%08lX\n", (unsigned long)mach_splits, mach_split_min,
+				mach_split_max, (unsigned long)mach_peek(0x110));
 			mach_splits = 0;
 			mach_split_min = 9999;
 			mach_split_max = -1;

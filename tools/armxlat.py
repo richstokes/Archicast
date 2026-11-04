@@ -33,6 +33,12 @@ ROM_PATCHES = {
     # ADFS only starts IDE on IOEB machines or if a podule claims it. This machine
     # reports old-style I/O so the floppy driver stays WD1772, so skip that check.
     0xE1470: (0x1A000003, 0xE1A00000),
+    # At reset the kernel times 1024 turns of a loop against IOC timer 0, and keeps
+    # 16384000 / ticks at 0x110. A mode change later divides by its low half, so a
+    # count of 250 or 125 leaves 0 there and hangs the boot. Native code races the
+    # timer, which only moves at polls, so the count depends on the build and
+    # wobbles from boot to boot. An ARM2 measures 160, as the harness does: use it.
+    0x13548: (0xE1A020A2, 0xE3A020A0),  # lsr r2, r2, #1 -> mov r2, #160
 }
 RAM_IMAGES = {"WaveSynth", "StringLib", "Percussion"}
 ROM_BYTES = 0x200000
