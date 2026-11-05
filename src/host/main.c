@@ -19,6 +19,18 @@ uint64_t plat_time_us(void)
 	return virtual_us += us_step + (jitter >> 16) % (us_jitter + 1);
 }
 
+/* The clock the chip in assets/cmos.bin was stopped at, 09 Nov 1992 14:16:19,
+ * so replays stay deterministic. DREAM_RTC gives another, in Unix seconds. */
+int64_t plat_rtc_secs(void)
+{
+	return getenv("DREAM_RTC") ? atoll(getenv("DREAM_RTC")) : 721318579;
+}
+
+void plat_rtc_set(int64_t secs)
+{
+	fprintf(stderr, "rtc set to %lld\n", (long long)secs);
+}
+
 void plat_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -165,7 +177,7 @@ static const struct { char c; u8 row, col, shift; } key_map[] = {
 	{'9',1,9,0},{' ',5,15,0},{'.',5,6,0},{'-',1,11,0},{'/',5,7,0},{',',5,5,0},{'\n',4,7,0},
 	{':',4,5,1},{'$',1,4,1},{'*',1,8,1},{'"',4,6,1},{'_',1,11,1},{'!',1,1,1},{'=',1,12,0},
 	{'(',1,9,1},{')',1,10,1},{'&',1,7,1},{'[',3,1,0},{']',3,2,0},
-	{'<',5,5,1},{'>',5,6,1},{'+',1,12,1},{';',4,5,0},
+	{'<',5,5,1},{'>',5,6,1},{'+',1,12,1},{';',4,5,0},{'?',5,7,1},{'%',1,5,1},
 };
 static char typing[256];
 static int type_pos, type_phase;

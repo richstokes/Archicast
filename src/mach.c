@@ -614,15 +614,116 @@ static void kb_poll(void)
 	}
 }
 
-/* CMOS and RTC on the I2C lines */
+/* CMOS and RTC on the I2C lines. The chip is a PCF8583: registers 0x00-0x0F
+ * are its clock and the rest the battery-backed RAM RISC OS keeps its
+ * configuration in. The kernel reads the clock once per reset (register 5 for
+ * the two year bits, then 1-6 in one go) and counts on from there off timer 0,
+ * so the registers are worked out from the platform's clock as each read
+ * starts: at boot that read comes ~18s in, and Ctrl+Break reads them again.
+ * The full year is the kernel's own, in CMOS bytes &80-&81 (physical
+ * 0xC0-0xC1: year in century, then century, in binary) and set at init.
+ * Setting the time (OS_Word 15, from !Alarm or BASIC's TIME$) moves the clock
+ * here and on the platform, so it survives power off. */
+#ifdef I2C_TRACE
+#define I2CLOG(...) plat_log(__VA_ARGS__)
+#else
+#define I2CLOG(...) ((void)0)
+#endif
 enum { I2C_IDLE, I2C_RECEIVE, I2C_TRANSMIT, I2C_ACK, I2C_TRANSACK };
 enum { CM_IDLE, CM_ADDR, CM_DATA, CM_SEND, CM_NONE };
+enum { RTC_REGS = 1, RTC_YEAR = 2 }; /* what a write burst touched */
 static struct {
 	u8 ram[256];
 	int state, addr, rw, is_tx;
 	int i2c, last, pos, clock, line;
 	u8 byte;
+	int64_t rtc_base; /* Unix seconds at rtc_base_us */
+	uint64_t rtc_base_us;
+	int written;
 } cm;
+
+static u8 bcd(int n)
+{
+	return (u8)(((n / 10) << 4) | (n % 10));
+}
+
+static int unbcd(u8 v)
+{
+	return (v >> 4) * 10 + (v & 15);
+}
+
+/* Days since 1970-01-01 to and from a civil date (Howard Hinnant's algorithms) */
+static void civil_from_days(int64_t z, int *y, int *m, int *d)
+{
+	int64_t era;
+	unsigned doe, yoe, doy, mp;
+	z += 719468;
+	era = (z >= 0 ? z : z - 146096) / 146097;
+	doe = (unsigned)(z - era * 146097);
+	yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+	doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+	mp = (5 * doy + 2) / 153;
+	*d = (int)(doy - (153 * mp + 2) / 5 + 1);
+	*m = (int)(mp < 10 ? mp + 3 : mp - 9);
+	*y = (int)(yoe + era * 400 + (*m <= 2));
+}
+
+static int64_t days_from_civil(int y, int m, int d)
+{
+	int64_t era;
+	unsigned yoe, doy, doe;
+	y -= m <= 2;
+	era = (y >= 0 ? y : y - 399) / 400;
+	yoe = (unsigned)(y - era * 400);
+	doy = (153 * (unsigned)(m > 2 ? m - 3 : m + 9) + 2) / 5 + (unsigned)d - 1;
+	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return era * 146097 + (int64_t)doe - 719468;
+}
+
+/* Fill the clock registers in for now, and return the year they can't hold */
+static int rtc_refresh(void)
+{
+	uint64_t us = last_us - cm.rtc_base_us;
+	int64_t secs = cm.rtc_base + (int64_t)(us / 1000000), days = secs / 86400;
+	int rem, y, m, d;
+	if (secs < 0 && secs % 86400)
+		days--;
+	rem = (int)(secs - days * 86400);
+	civil_from_days(days, &y, &m, &d);
+	cm.ram[1] = bcd((int)(us / 10000 % 100));
+	cm.ram[2] = bcd(rem % 60);
+	cm.ram[3] = bcd(rem / 60 % 60);
+	cm.ram[4] = bcd(rem / 3600); /* bit 7 clear: 24 hour clock */
+	cm.ram[5] = (u8)(((y & 3) << 6) | bcd(d));
+	cm.ram[6] = (u8)(((days % 7 + 11) % 7 << 5) | bcd(m)); /* weekday 0 is Sunday */
+	return y;
+}
+
+static void cmos_set_year(int year)
+{
+	u8 lo = (u8)(year % 100), hi = (u8)(year / 100);
+	cm.ram[0x3F] = (u8)(cm.ram[0x3F] + lo - cm.ram[0xC0] + hi - cm.ram[0xC1]);
+	cm.ram[0xC0] = lo;
+	cm.ram[0xC1] = hi;
+}
+
+/* RISC OS wrote the time, the year or both: the clock starts again from them.
+ * The platform's clock is only moved by a time, as the kernel also rewrites
+ * the year on its own, when the chip's two bits have moved past it. */
+static void rtc_written(void)
+{
+	int64_t secs;
+	if (!(cm.written & RTC_REGS))
+		rtc_refresh();
+	secs = days_from_civil(cm.ram[0xC1] * 100 + cm.ram[0xC0], unbcd(cm.ram[6] & 0x1F), unbcd(cm.ram[5] & 0x3F)) * 86400
+		+ unbcd(cm.ram[4] & 0x3F) * 3600 + unbcd(cm.ram[3] & 0x7F) * 60 + unbcd(cm.ram[2] & 0x7F);
+	cm.rtc_base = secs;
+	cm.rtc_base_us = last_us;
+	I2CLOG("i2c   clock set to %lld%s\n", (long long)secs, cm.written & RTC_REGS ? "" : " (year only)");
+	if (cm.written & RTC_REGS)
+		plat_rtc_set(secs);
+	cm.written = 0;
+}
 
 static void cmos_write_byte(u8 v)
 {
@@ -630,9 +731,12 @@ static void cmos_write_byte(u8 v)
 	case CM_IDLE:
 		cm.rw = v & 1;
 		if ((v & 0xFE) == 0xA0) {
+			I2CLOG("i2c %.3f start %s at %02X\n", last_us / 1e6, cm.rw ? "read" : "write", cm.addr & 0xFF);
 			if (cm.rw) {
 				cm.state = CM_SEND;
 				cm.is_tx = 1;
+				if ((cm.addr & 0xFF) < 8)
+					rtc_refresh();
 				cm.byte = cm.ram[cm.addr++ & 0xFF];
 			} else {
 				cm.state = CM_ADDR;
@@ -647,9 +751,19 @@ static void cmos_write_byte(u8 v)
 		cm.addr = v;
 		cm.state = cm.rw ? CM_SEND : CM_DATA;
 		break;
-	case CM_DATA:
-		cm.ram[cm.addr++ & 0xFF] = v;
+	case CM_DATA: {
+		int a = cm.addr++ & 0xFF;
+		I2CLOG("i2c   wr [%02X]=%02X (was %02X)\n", a, v, cm.ram[a]);
+		if (a >= 1 && a <= 6) {
+			if (!(cm.written & RTC_REGS))
+				rtc_refresh(); /* so a date alone keeps the time of day, and the other way round */
+			cm.written |= RTC_REGS;
+		} else if (a == 0xC0 || a == 0xC1) {
+			cm.written |= RTC_YEAR;
+		}
+		cm.ram[a] = v;
 		break;
+	}
 	}
 }
 
@@ -673,6 +787,8 @@ static void i2c_change(int nclock, int ndata)
 			cm.i2c = I2C_IDLE;
 			cm.state = CM_IDLE;
 			cm.is_tx = 0;
+			if (cm.written)
+				rtc_written();
 		} else if (cm.clock && nclock && !ndata && cm.last) {
 			cm.pos = 0;
 			cm.state = CM_IDLE;
@@ -1619,6 +1735,11 @@ void mach_init(const u8 *cmos_image)
 	update_tables();
 	last_us = plat_time_us();
 	next_frame_us = last_us + 20000;
+	cm.rtc_base = plat_rtc_secs();
+	cm.rtc_base_us = last_us;
+	cmos_set_year(rtc_refresh());
+	plat_log("clock %d-%02d-%02d %02d:%02d:%02d\n", cm.ram[0xC1] * 100 + cm.ram[0xC0], unbcd(cm.ram[6] & 0x1F),
+		unbcd(cm.ram[5] & 0x3F), unbcd(cm.ram[4]), unbcd(cm.ram[3]), unbcd(cm.ram[2]));
 }
 
 void mach_run(u32 start_pc)

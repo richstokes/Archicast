@@ -197,6 +197,8 @@ void net_swi(u32 op);
 
 /* Provided by each platform */
 uint64_t plat_time_us(void);
+int64_t plat_rtc_secs(void);     /* the platform's clock: Unix seconds, local time */
+void plat_rtc_set(int64_t secs); /* RISC OS set its clock; keep it where it survives power off */
 void plat_rom_read(u32 page, u8 *dest); /* one 32KB ROM page; may block on disc */
 const ov_header_t *plat_overlay_load(int unit); /* may block on disc */
 int plat_disc_open(void);      /* 0 for an empty drive */

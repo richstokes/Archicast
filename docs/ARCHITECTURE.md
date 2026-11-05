@@ -205,6 +205,20 @@ Most of the No-Intro set and some of TOSEC are JFD, a track dump that keeps copy
 
 `*CheckMap 4` reports `Map good` on a 40-title disc. It has not finished on a full disc, since it rescans the whole map for each object, and an earlier 136-title disc was still walking the tree after 15 minutes.
 
+## Clock
+
+The desktop used to boot on 09 Nov 1992, the time the clock chip in `assets/cmos.bin` was stopped at. The chip is a PCF8583 on the IIC lines: registers 0x00-0x0F are its clock, the rest is the CMOS RAM, and `src/mach.c` modelled all 256 bytes as plain RAM.
+
+Traced on the harness, the 3.11 kernel reads the clock once per reset, ~18.5s in: register 5 for its two year bits, checked against the year it keeps itself in CMOS bytes &80-&81 (physical 0xC0-0xC1, year in century then century, in binary, inside the checksum), then registers 1-6 in one go. It never reads them again, not even for `*Time`, and counts on from there off timer 0. So the registers are now worked out from the platform's clock as each read starts, in BCD, and the CMOS year is set at init with the checksum fixed up. A snapshot at init would not do: the boot read comes ~18s in, and Ctrl+Break reads the chip again.
+
+On the Dreamcast that clock is KOS's `rtc_unix_secs()`, the AICA's 32-bit count from 1950 (so it runs out in 2086) that the BIOS menu sets. It's local time with no zone, and the CMOS has DST off and the UK territory, so RISC OS shows exactly what the BIOS says. Flycast seeds it from the Mac's clock. The harness returns a fixed 09 Nov 1992 14:16:19 so replays stay deterministic, or `DREAM_RTC=<unix seconds>` for another. `tests/clock.replay` checks `*Time` on the F12 line.
+
+Setting the time works the other way too. OS_Word 15 writes the CMOS year first, then registers 1-4 and 5-6 as two bursts, and a date alone only the last two. So the first write of a burst into the time registers fills the rest from the live clock, each stop condition restarts the clock from the registers and the CMOS year, and a burst into the time registers also goes to the platform (`rtc_set_unix_secs()` on the console, a line on the harness). A year written on its own only moves the clock here, as the kernel rewrites it itself when the chip's two bits have passed it. Checked with `SYS "OS_Word",15` from BASIC for reasons 8, 15 and 24, with 1992 and 2026 dates: `*Time` and the harness's `rtc set to` both came out exact.
+
+Of note is that BASIC 1.05's `TIME$=` quietly did nothing with a 2026 date or a time on its own, and turned `08:00:00` into `08:00:08`, while the same strings through OS_Word 15 were right. Not chased: it may be BASIC's own parsing. `I2C_TRACE` on `src/mach.c` logs every transaction on the lines.
+
+Flycast check (11/4): the CDI booted and logged `clock 2026-11-04 18:20:26`, the Mac's local time. Not run on a console yet, and nobody has looked at `!Alarm` there.
+
 ## Network
 
 RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based ARM binary. So the stack is native (KOS) and the guest reaches it through DreamNet SWIs at `&CDC00`, a chunk from the range RISC OS leaves to users. `src/net.c` catches them in `swi_insn` before the kernel sees them. Results come back in r0 as a value or -errno, and there's no V-set error path, as nothing guest-side owns memory for an error block. We skipped Acorn's `Socket_*` numbers since no existing binary could call them anyway.

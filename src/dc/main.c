@@ -50,6 +50,19 @@ uint64_t plat_time_us(void)
 	return timer_us_gettime64();
 }
 
+/* The AICA's clock, which the BIOS menu sets. Local time, no zone, and a
+ * 32-bit count from 1950, so it runs out in 2086. */
+int64_t plat_rtc_secs(void)
+{
+	return (int64_t)rtc_unix_secs();
+}
+
+void plat_rtc_set(int64_t secs)
+{
+	if (rtc_set_unix_secs((time_t)secs) < 0)
+		printf("rtc: cannot set the clock\n");
+}
+
 void plat_log(const char *fmt, ...)
 {
 	va_list ap;
