@@ -217,7 +217,22 @@ Setting the time works the other way too. OS_Word 15 writes the CMOS year first,
 
 Of note is that BASIC 1.05's `TIME$=` quietly did nothing with a 2026 date or a time on its own, and turned `08:00:00` into `08:00:08`, while the same strings through OS_Word 15 were right. Not chased: it may be BASIC's own parsing. `I2C_TRACE` on `src/mach.c` logs every transaction on the lines.
 
-Flycast check (11/4): the CDI booted and logged `clock 2026-11-04 18:20:26`, the Mac's local time. Not run on a console yet, and nobody has looked at `!Alarm` there.
+Flycast check (11/4): the CDI booted and logged `clock 2026-11-04 18:20:26`, the Mac's local time.
+
+Console check (11/4), `tests/clock-hw.replay` under dcload: `*Time` after boot, after a Ctrl+Break, after the time was read and written back from BASIC on one line, and after another Ctrl+Break. The console's clock reads 17 Nov, ~13 days and 3h ahead of the Mac, and RISC OS showed that. The first run also found RISC OS's clock falling behind the console's, ~4s by the first `*Time` and ~10s by the last, and the write-back then put the lag into the console's clock (by ~7s, on a clock that was already 13 days out).
+
+The lag was timer 0, which `step_timer` let drop every whole period a step went past, as one step raises one interrupt. Timer 0 is the kernel's 100Hz clock, and a step covers many periods whenever a poll is late: a ROM page or disc read over dcload, a heartbeat line, a long present. With 25ms presents on the harness the kernel saw ~518 ticks per 10s instead of ~1008, so the clock ran at half speed. That predates this work and went unnoticed while the clock started in 1992. Those periods are now owed and handed over one per poll, ~990 per 10s with the same presents. Only periods of 1ms or more count, as the kernel also runs timer 0 at ~5us to time a loop before reading the chip, and the debt is forgotten when the kernel reads the clock chip. The harness never owes any at its 40us polls, so no replay moved.
+
+Second console run with the fix, `*Time` against the console's clock printed at each checkpoint:
+
+| Checkpoint | `*Time` | Console clock at the screenshot |
+| --- | --- | --- |
+| After boot | 22:05:11 | 22:05:14 |
+| After Ctrl+Break | 22:06:21 | 22:06:24 |
+| After the write-back | 22:07:00 | 22:07:04 |
+| After Ctrl+Break | 22:08:15 | 22:08:17 |
+
+The gap is how long the screenshot comes after Return, and it no longer grows. The write-back set 22:06:55, the console's own time at that moment, and KOS read it back. Nobody has looked at `!Alarm` on a console, or at how far the clock gets behind over a long session with lots of loading.
 
 ## Network
 

@@ -1,0 +1,32 @@
+# Console clock check: *Time, a Ctrl+Break hard reset that reads the chip again,
+# then the time read and written back from BASIC on one line (OS_Word 14, then
+# 15), so the console's own clock is set without moving it (by under a second),
+# and *Time after another reset.
+# Hardware: tools/replay2c.py tests/clock-hw.replay -36 with TYPE_HOLD=150 TYPE_MS=350.
+70 key 0 12 1
+70.1 key 0 12 0
+72 type time\n
+76 shot build/ch1.ppm
+77 key 3 11 1
+77.2 key 0 15 1
+77.6 key 0 15 0
+77.8 key 3 11 0
+140 key 0 12 1
+140.1 key 0 12 0
+142 type time\n
+146 shot build/ch2.ppm
+147 type basic\n
+151 type DIM b 32\n
+156 type b!0=0\n
+160 type SYS "OS_Word",14,b+1:b?0=24:SYS "OS_Word",15,b\n
+180 type *time\n
+186 shot build/ch3.ppm
+187 type QUIT\n
+190 key 3 11 1
+190.2 key 0 15 1
+190.6 key 0 15 0
+190.8 key 3 11 0
+253 key 0 12 1
+253.1 key 0 12 0
+255 type time\n
+259 shot build/ch4.ppm

@@ -57,10 +57,13 @@ int64_t plat_rtc_secs(void)
 	return (int64_t)rtc_unix_secs();
 }
 
+/* KOS reads the clock back after writing it, so success means it took */
 void plat_rtc_set(int64_t secs)
 {
 	if (rtc_set_unix_secs((time_t)secs) < 0)
 		printf("rtc: cannot set the clock\n");
+	else
+		printf("rtc set to %lld\n", (long long)secs);
 }
 
 void plat_log(const char *fmt, ...)
@@ -831,8 +834,8 @@ static void replay_step(int *dx, int *dy, int *buttons)
 				fs_write(f, replay_screen.ram + replay_screen.base, bytes - head);
 				fs_close(f);
 			}
-			printf("replay checkpoint %d sum=%08lX\n", e->a,
-				(unsigned long)mach_screen_sum(&replay_screen));
+			printf("replay checkpoint %d sum=%08lX rtc=%lld\n", e->a,
+				(unsigned long)mach_screen_sum(&replay_screen), (long long)rtc_unix_secs());
 			dump_screen(e->a);
 		}
 	}

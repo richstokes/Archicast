@@ -632,6 +632,7 @@ static void kb_poll(void)
 enum { I2C_IDLE, I2C_RECEIVE, I2C_TRANSMIT, I2C_ACK, I2C_TRANSACK };
 enum { CM_IDLE, CM_ADDR, CM_DATA, CM_SEND, CM_NONE };
 enum { RTC_REGS = 1, RTC_YEAR = 2 }; /* what a write burst touched */
+static u32 t0_owed; /* timer 0 periods still to hand over, see step_timer */
 static struct {
 	u8 ram[256];
 	int state, addr, rw, is_tx;
@@ -735,8 +736,10 @@ static void cmos_write_byte(u8 v)
 			if (cm.rw) {
 				cm.state = CM_SEND;
 				cm.is_tx = 1;
-				if ((cm.addr & 0xFF) < 8)
+				if ((cm.addr & 0xFF) < 8) {
 					rtc_refresh();
+					t0_owed = 0; /* the kernel sets its clock from this read */
+				}
 				cm.byte = cm.ram[cm.addr++ & 0xFF];
 			} else {
 				cm.state = CM_ADDR;
@@ -1484,11 +1487,24 @@ static void sound_swap(uint64_t now)
 	ioc.irqb |= IRQB_SOUND;
 }
 
+/* Whole timer 0 periods that one step went past. Timer 0 is the kernel's 100Hz
+ * clock, and a late poll (a ROM page or disc read, a log line over dcload, a
+ * long present) covers many periods but raises one interrupt, so the time of
+ * day fell seconds behind the platform's clock within minutes on a console.
+ * They are handed over one per poll instead. The harness polls every 40us, so
+ * it never owes any. A read of the clock chip forgets them, as the kernel sets
+ * its clock from it. */
+static u32 t0_owed;
+
 static void step_timer(int n, u32 ticks)
 {
 	u32 period = ioc.latch[n] ? ioc.latch[n] + 1 : 0x10001;
-	if (ticks >= period)
+	if (ticks >= period) {
+		/* Only a clock's period: the kernel also runs timer 0 at a few us to time loops */
+		if (n == 0 && period >= 2000 && (t0_owed += ticks / period) > 6000)
+			t0_owed = 6000; /* a minute; a debugger stop is not worth replaying */
 		ticks %= period;
+	}
 	if (ioc.count[n] >= ticks) {
 		ioc.count[n] -= ticks;
 		if (ticks == 0 || ioc.count[n])
@@ -1510,6 +1526,10 @@ static void machine_tick(void)
 	last_us = now;
 	for (n = 0; n < 4; n++)
 		step_timer(n, delta * 2);
+	if (t0_owed && !(ioc.irqa & IRQA_T0)) {
+		t0_owed--;
+		ioc.irqa |= IRQA_T0;
+	}
 	if (now >= next_frame_us) {
 		next_frame_us = now + (app_frame_us ? app_frame_us : 20000);
 		app_frame_us = 0;
