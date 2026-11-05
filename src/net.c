@@ -22,6 +22,9 @@ enum {
 
 #define ERR_INVAL 22
 #define MAX_TRANSFER 1460 /* one segment per call keeps a SWI short */
+#define SCRAP_DIR_CMD 452  /* past the Dreambox blocks in BoxInit's workspace */
+#define SCRAP_FILE_CMD 480 /* SCRAP_CMD2 in tools/mkapps.py; ends by 512 */
+#define SYSTEM_PATH_CMD 512 /* SYSTEM_CMD there, in a 576 byte workspace */
 
 static void guest_read(u32 addr, void *dest, u32 len)
 {
@@ -362,9 +365,24 @@ void net_swi(u32 op)
 		R(12) = (u32)result;
 		return;
 	}
-	case DN_BOX_INIT:
+	case DN_BOX_INIT: { /* also the boot commands DreamApps issues: scrap, as !Scrap would set, and System$Path */
+		/* By drive number: ADFS:$ follows the CSD, and old !Run files Dir onto the
+		 * archive, where the scrap file can't be written. The card, else the floppy. */
+		static const char *dirs[2] = {"Set Wimp$ScrapDir ADFS::0.$", "Set Wimp$ScrapDir ADFS::4.$"};
+		static const char *files[2] = {"Set Wimp$Scrap ADFS::0.$.Scrap", "Set Wimp$Scrap ADFS::4.$.Scrap"};
+		/* No boot disc runs !System either. The archive has one built from its
+		 * titles' own, and some apps refuse to start while System$Path is unset */
+		static const char *system[2] = {"| no archive, so no !System", "Set System$Path ADFS::Archive.$.!System."};
+		int card = plat_hd_sectors(0) && plat_hd_writable(0), archive = 0;
+		for (a = 0; a < HD_UNITS; a++)
+			archive |= plat_hd_sectors((int)a) && !plat_hd_writable((int)a);
 		dreambox_init(R(2));
+		guest_write(R(2) + SCRAP_DIR_CMD, dirs[card], (u32)strlen(dirs[card]) + 1);
+		guest_write(R(2) + SCRAP_FILE_CMD, files[card], (u32)strlen(files[card]) + 1);
+		guest_write(R(2) + SYSTEM_PATH_CMD, system[archive], (u32)strlen(system[archive]) + 1);
+		result = (s32)(R(2) + SCRAP_DIR_CMD);
 		break;
+	}
 	case DN_BOX_TASK: { /* the icon bar task: r10 names the next SWI */
 		u32 r[11];
 		for (a = 0; a < 11; a++)

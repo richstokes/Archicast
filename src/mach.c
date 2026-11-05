@@ -454,6 +454,10 @@ static struct {
 	int mouse_seen;
 	struct { u8 row, col, down; } queue[32];
 	int head, tail;
+	/* Keys the kernel has seen go down. A reset keyboard reports them again, which
+	 * is how the kernel tells Ctrl+Break (a hard reset) from Break */
+	u8 held[16];
+	int resend; /* next key code to check, or -1 */
 } kb;
 
 static void kb_arm_rx(void)
@@ -485,6 +489,7 @@ static void kb_write(u8 v)
 			kb_single(0xFF);
 			kb.key_enabled = kb.mouse_enabled = 0;
 			kb.state = KB_RESET;
+			kb.resend = 0;
 		} else if (v == 0xFE) {
 			kb_single(0xFE);
 			kb.key_enabled = kb.mouse_enabled = 0;
@@ -503,6 +508,7 @@ static void kb_write(u8 v)
 		} else if (v == 0xFF) {
 			kb_single(0xFF);
 			kb.state = KB_RESET;
+			kb.resend = 0;
 		}
 		break;
 	case KB_DAT1:
@@ -512,6 +518,7 @@ static void kb_write(u8 v)
 		} else if (v == 0xFF) {
 			kb_single(0xFF);
 			kb.state = KB_RESET;
+			kb.resend = 0;
 		}
 		break;
 	default:
@@ -522,6 +529,7 @@ static void kb_write(u8 v)
 		} else if (v == 0xFF) {
 			kb_single(0xFF);
 			kb.state = KB_RESET;
+			kb.resend = 0;
 		}
 		break;
 	}
@@ -575,8 +583,21 @@ static void kb_poll(void)
 {
 	if (kb.state != KB_IDLE || !kb.key_enabled)
 		return;
+	while (kb.resend >= 0 && kb.resend < 128) {
+		int code = kb.resend++;
+		if (kb.held[code >> 3] & (1 << (code & 7))) {
+			kb_double((u8)(0xC0 | code >> 4), (u8)(0xC0 | (code & 15)));
+			return;
+		}
+	}
+	kb.resend = -1;
 	if (kb.head != kb.tail) {
+		int code = kb.queue[kb.head].row << 4 | kb.queue[kb.head].col;
 		u8 base = kb.queue[kb.head].down ? 0xC0 : 0xD0;
+		if (kb.queue[kb.head].down)
+			kb.held[code >> 3] |= (u8)(1 << (code & 7));
+		else
+			kb.held[code >> 3] &= (u8)~(1 << (code & 7));
 		kb_double(base | kb.queue[kb.head].row, base | kb.queue[kb.head].col);
 		kb.head = (kb.head + 1) % 32;
 		return;

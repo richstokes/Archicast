@@ -240,6 +240,16 @@ static int pump(int fd)
 	}
 }
 
+/* A reply we can't take, in the log byte for byte, so a mangled stream shows */
+static void log_reply(const char *why, const char *reply, int have)
+{
+	int i;
+	printf("print: %s, %d bytes:", why, have);
+	for (i = 0; i < have && i < 320; i++)
+		printf(i % 32 ? " %02x" : "\n  %02x", (uint8_t)reply[i]);
+	printf("\n");
+}
+
 /* Pull the IPP status out of the reply. 1 if the printer took the job. */
 static int read_reply(int fd)
 {
@@ -262,8 +272,14 @@ static int read_reply(int fd)
 			const uint8_t *ipp = (const uint8_t *)body + 4;
 			int len = have - (int)((const char *)ipp - reply);
 			if (http != 200) {
+				/* The status line itself, as one that isn't HTTP at all means the
+				 * stream got mangled on the way, not that the printer said no */
 				char text[48];
-				snprintf(text, sizeof(text), "Printer said HTTP %d", http);
+				int i, n = snprintf(text, sizeof(text), "Printer said: ");
+				for (i = 0; reply + i < body && reply[i] != '\r' && n < (int)sizeof(text) - 1; i++)
+					text[n++] = reply[i] >= 32 && reply[i] < 127 ? reply[i] : '?';
+				text[n] = 0;
+				log_reply("not HTTP 200", reply, have);
 				fail(text);
 				return 0;
 			}
@@ -280,6 +296,7 @@ static int read_reply(int fd)
 				if (code >= 0x100) {
 					char text[48];
 					snprintf(text, sizeof(text), "Printer refused the job (%04x)", code);
+					log_reply("refused", reply, have);
 					fail(text);
 					return 0;
 				}

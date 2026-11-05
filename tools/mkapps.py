@@ -113,7 +113,6 @@ def build_pack(apps):
     return bytes(pack)
 
 
-SCRAP_CMDS = [b"Set Wimp$ScrapDir ADFS:$\0", b"Set Wimp$Scrap ADFS:$.ScrapFile\0"]
 DUMPER_NUMBER = 40      # no Acorn dumper uses it
 PDRIVER_DP = 7          # PDriverDP's number with the PDriver sharer
 PDRIVER_VERSION = 0x148 # the newest PDriverDP takes; has to fit a MOV
@@ -124,7 +123,9 @@ XDREAM_BOX_TASK = 0xEF0EDC23    # +35
 XDREAM_RESET = 0xEF0EDC24       # +36
 BOX_FS_NUMBER = 0xDC            # BOX_FS_NUMBER in src/dreambox.h
 BOX_FILES = 4                   # HANDLES there; FileSwitch refuses a fifth open
-BOX_WORKSPACE = 512             # RMA for the error block, and the icon bar task's blocks
+BOX_WORKSPACE = 576             # RMA for the error block, the icon bar task's blocks and the boot commands
+SCRAP_CMD2 = 480                # SCRAP_FILE_CMD in src/net.c
+SYSTEM_CMD = 512                # SYSTEM_PATH_CMD in src/net.c
 BOX_ENTRIES = ["fs_open", "fs_get", "fs_put", "fs_args", "fs_close", "fs_file", "fs_func"]
 # The SWIs the icon bar task asks for, in the order of TASK_* in src/dreambox.h
 TASK_SWIS = [
@@ -248,10 +249,6 @@ def module_items():
         0xE92D4100,        # STMFD sp!,{r8,lr}
         0xE3A0050F,        # MOV r0,#PACK_BASE
         0xEF061B40,        # SWI XResourceFS_RegisterFiles
-        adr(0, "cmd1"),    # ADR r0,cmd1
-        0xEF020005,        # SWI XOS_CLI
-        adr(0, "cmd2"),    # ADR r0,cmd2
-        0xEF020005,        # SWI XOS_CLI
         0xE3A00102,        # MOV r0,#&80000000 (add a dumper)
         0xE3A01000 | DUMPER_NUMBER,  # MOV r1,#number
         0xE3A02F00 | PDRIVER_VERSION >> 2,  # MOV r2,#version
@@ -264,7 +261,12 @@ def module_items():
         0xE3A00006,        # MOV r0,#6 (claim)
         0xE3A03000 | BOX_WORKSPACE >> 2 | 15 << 8,  # MOV r3,#workspace
         0xEF02001E,        # SWI XOS_Module
-        XDREAM_BOX_INIT,   # SWI XDreamNet_BoxInit (r2 -> workspace)
+        XDREAM_BOX_INIT,   # SWI XDreamNet_BoxInit (r2 -> workspace, out r0 -> first command)
+        0xEF020005,        # SWI XOS_CLI (set Wimp$ScrapDir)
+        0xE2820F00 | SCRAP_CMD2 >> 2,  # ADD r0,r2,#second command
+        0xEF020005,        # SWI XOS_CLI (set Wimp$Scrap)
+        0xE2820F00 | SYSTEM_CMD >> 2,  # ADD r0,r2,#third command
+        0xEF020005,        # SWI XOS_CLI (set System$Path)
         0xE3A0000C,        # MOV r0,#12 (add a filing system)
         adr(1, "start"),   # ADR r1,start (the module base)
         mov_offset(2, "fsinfo"),  # MOV r2,#fsinfo
@@ -272,10 +274,6 @@ def module_items():
         0xEF020029,        # SWI XOS_FSControl
         0xE1500000,        # CMP r0,r0 (a failure must not fail the boot)
         0xE8BD8100,        # LDMFD sp!,{r8,pc}
-        "cmd1",
-        SCRAP_CMDS[0],
-        "cmd2",
-        SCRAP_CMDS[1],
         "service",
         0xE3310027,        # TEQ r1,#&27 (Service_Reset)
         branch(EQ, "reset"),

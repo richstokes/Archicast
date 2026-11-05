@@ -1,0 +1,10 @@
+# The scrap file stays on the default drive after something moves the CSD to the
+# archive, as old !Run files do with Dir <Obey$Dir>. Needs DREAM_HD and DREAM_HD_RO.
+70 key 0 12 1
+70.1 key 0 12 0
+73 type dir adfs::5.$\n
+78 type spool <Wimp$Scrap>\n
+82 type echo hi\n
+86 type spool\n
+90 type cat adfs::4.$\n
+98 shot build/sx1.ppm

@@ -49,6 +49,9 @@ FOLDERS = {"Applications": "Apps", "Educational": "Apps", "Miscellaneous": "Apps
            "Demos": "Demos", "Compilations": "Compilatns"}
 # A floppy path: drive 0 or a disc by name, optionally through $, then the next name
 FLOPPY_PATH = re.compile(rb"(?i)(?:adfs::[a-z0-9_-]+|(?:adfs:)?:0)\.(?:\$\.)?()([!a-z0-9_]+)")
+# The floppy's root on its own, as in Set Floppy$Dir adfs::0.$. Drive 0 or a disc name,
+# not :4, which is only ever an example of a hard disc
+FLOPPY_ROOT = re.compile(rb"(?i)(?:adfs::(?:0|[a-z_][a-z0-9_-]*)|(?:adfs:)?:0)\.\$(?![.!\w$])")
 NOT_APPS = {"!system", "!scrap", "!boot", "!fonts"}  # support folders, not things to run
 DULL_FILES = {"!run", "!boot", "!sprites", "!sprites22", "!sprites23", "!help", "!runimage", "templates",
               "messages", "sprites"}
@@ -281,7 +284,7 @@ def rewrite_path(data, root, names):
     """data with floppy paths into this title pointed at its folder on the hard disc."""
     def swap(m):
         return root + b"." + m.group(2) if m.group(2).lower() in names else m.group(0)
-    return FLOPPY_PATH.sub(swap, data)
+    return FLOPPY_ROOT.sub(lambda m: root, FLOPPY_PATH.sub(swap, data))
 
 
 def rewrite_basic(data, root, names):
@@ -300,8 +303,10 @@ def rewrite_basic(data, root, names):
 
 def relocate(title, path):
     """Floppies assume they are drive 0. Point their Obey, Exec and BASIC files at the
-    title's folder instead, when the path leads to something in it. Paths inside
-    compiled code keep pointing at the floppy, as they cannot change length."""
+    title's folder instead, when the path leads to something in it. The bare root
+    always goes there: it holds every disk, so Cannon Fodder's Floppy$Dir finds
+    Disk2 and Disk3 beside !Cannon. Paths inside compiled code keep pointing at the
+    floppy, as they cannot change length."""
     root = ("adfs::%s.$.%s" % (DISC_NAME, path)).encode("latin-1")
     names = {c.name.lower().encode("latin-1") for c in title.children.values()}
     moved = 0
@@ -313,6 +318,38 @@ def relocate(title, path):
         moved += new != e.data
         e.data = new
     return moved
+
+
+def module_version(data):
+    """(major, minor) from a module's help string, or None for anything else"""
+    if len(data) < 0x18:
+        return None
+    at = struct.unpack_from("<I", data, 0x14)[0]
+    if not 0x18 <= at < len(data):
+        return None
+    m = re.search(rb"\t+ *(\d+)\.(\d+)", data[at:at + 64].split(b"\0")[0])
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def shared_system(root):
+    """A !System for the whole disc, as a boot disc would have: the newest copy of
+    each module any title's own !System carries. DreamApps points System$Path here,
+    which apps such as StartWrite insist on before they look at module versions."""
+    best = {}
+    for where, e in root.walk():
+        parts = where.lower().split(".")
+        if e.is_dir or len(parts) < 3 or parts[-3] != "!system" or parts[-2] != "modules":
+            continue
+        version = module_version(e.data)
+        if version and (e.name.lower() not in best or version > best[e.name.lower()][0]):
+            best[e.name.lower()] = (version, e)
+    system = adfs.Entry("!System", attrs=0x08)
+    modules = system.subdir("Modules")
+    for _, e in sorted(best.values(), key=lambda b: b[1].name.lower()):
+        modules.add(adfs.Entry(e.name, e.load, e.exec_, e.attrs, e.data))
+    boot = b"| Set by DreamApps at boot too, so apps find it before this folder is seen\nSet System$Path <Obey$Dir>.\n"
+    system.add(adfs.Entry("!Boot", 0xFFFFEB00, 0, 0x13, boot))
+    return system, len(best)
 
 
 def write_index(root, titles):
@@ -485,6 +522,9 @@ def main():
             moved += relocate(entry, path)
             titled[path] = (entry, bundled[id(entry)], path.split(".")[0])
     print("  rewrote floppy paths in %d files" % moved, file=sys.stderr)
+    system, count = shared_system(root)
+    root.add(system)
+    print("  !System with %d modules" % count, file=sys.stderr)
     text = ("\n".join(readme) + "\n").encode("latin-1", "replace")
     root.add(adfs.Entry("ReadMe", 0xFFFFFFFF, 0, 0x13, text))
     root.add(adfs.Entry("Index", 0xFFFFFFFF, 0, 0x13, write_index(root, titled)))
