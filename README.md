@@ -35,7 +35,7 @@ The split pays off in performance: the OS and anything built into the image run 
 - **Network**: `!Ping` and `!NetSetup`. A Broadband or LAN Adapter comes up by itself with DHCP; the modem (DreamPi) and W5500 are picked in `!NetSetup`.
 - **Web**: `!Web` is a small text browser with HTTP, HTTPS, forms and search. Google, DuckDuckGo, Hacker News and Wikipedia work in Flycast, and real sites have loaded on a console. HTTPS is encrypted but certificates are not verified, so don't use it for anything private
 - **Dreambox**: a network drive on [dcvmu.com](https://dcvmu.com). Open `!Dreambox` in Apps to put it on the icon bar, and save into it from anything; files can be up/downloaded on the website under Account, Archicast. The first time it shows a code to type on the website, so no password goes in on the console
-- **Clock**: the date and time come from the Dreamcast's own clock, as set in its BIOS menu, so `*Time`, `!Alarm` and file dates are right. Setting the clock from RISC OS moves the console's too
+- **Clock**: the date and time come from the Dreamcast's own clock, as set in its BIOS menu, so `*Time`, `!Alarm` and file dates are right. Setting the clock from RISC OS moves the console's too. `!NetTime` in Apps sets both from a network time server: fill in your offset from UTC (`-8` for California) and click Set clock
 - **Printing**: `!NetPrint` prints to an AirPrint printer over the network, from `!Edit`, `!Draw` and anything else using the RISC OS printer drivers. 300dpi black and white, and you type in the printer's address. A real Brother HL-L2305 has successfully printed! See [docs/printing.md](docs/printing.md)
 
 ## Build

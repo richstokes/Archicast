@@ -41,3 +41,7 @@ Watch out for `FOR`, which always runs once in BBC BASIC, and for anything live 
 `!NetPrint` is BASIC as well, and does the job of `!Printers`, which needs printer definitions off a disc we don't have. It has to stay running: `!Edit` and `!Draw` won't print unless a printer manager answers them on the Wimp. See Printing in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 `tools/basic.py` knows no `PTR#`, in either form, so file positions go through `OS_Args`.
+
+## NetTime
+
+`!NetTime` is BASIC too: one NTP request over the DreamNet socket SWIs, then OS_Word 15, which also sets the console's own clock. Its window keeps the server, the UTC offset and a Summer time option, and Save puts them on a VMU. See NetTime in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).

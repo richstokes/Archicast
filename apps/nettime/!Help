@@ -1,0 +1,9 @@
+NetTime sets the clock from a network time server, and sets the Dreamcast's own
+clock with it, so the time is right the next time it's switched on.
+
+The Dreamcast keeps local time, and time servers give UTC, so fill in how many
+hours you are from UTC: -8 for California, +1 for Paris, +5:30 for India. Tick
+Summer time while the clocks are forward. Set clock asks the server and sets the
+time. Save keeps the server and the offset on a VMU.
+
+It needs the network up first, which a Broadband Adapter does by itself.

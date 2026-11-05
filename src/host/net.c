@@ -62,6 +62,23 @@ int plat_print_save(const print_config_t *c)
 	return 0;
 }
 
+/* No VMU here either. DREAM_NTP names the server, so a test can use a local one. */
+int plat_time_load(time_config_t *c)
+{
+	const char *server = getenv("DREAM_NTP");
+	if (!server)
+		return 0;
+	memset(c, 0, sizeof(*c));
+	snprintf(c->server, sizeof(c->server), "%s", server);
+	return 1;
+}
+
+int plat_time_save(const time_config_t *c)
+{
+	(void)c;
+	return 0;
+}
+
 void plat_sock_tune(int fd)
 {
 	(void)fd;

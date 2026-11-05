@@ -234,6 +234,25 @@ Second console run with the fix, `*Time` against the console's clock printed at 
 
 The gap is how long the screenshot comes after Return, and it no longer grows. The write-back set 22:06:55, the console's own time at that moment, and KOS read it back. Nobody has looked at `!Alarm` on a console, or at how far the clock gets behind over a long session with lots of loading.
 
+### NetTime (11/4)
+
+`!NetTime` sets the clock from a time server, and the console's clock with it. It's BASIC on the socket SWIs: one 48 byte NTP request to port 123, then OS_Word 15 with the server's transmit time plus half the round trip, which the clock chip model above passes to `rtc_set_unix_secs()`. NTP gives UTC and the Dreamcast keeps local time, so it takes a UTC offset (`-8`, `+5:30`) and a Summer time option that adds an hour, rather than carrying DST rules. Save keeps the server and offset in `DRISCTIM` on a VMU through +38 and +39, like NetPrint's settings. Default server is `pool.ntp.org`.
+
+- OS_Word 14 reason 3 gives centiseconds from 1900 in five bytes, more than a BASIC real holds exactly, so the app takes 1970 off in two parts before converting. NTP seconds wrap in 2036 and the app counts era 1 from there; the console's own clock lasts to 2086
+- Of note is that a late DNS reply can land on the NTP socket. KOS gave the app's UDP socket the local port its resolver had just used, and in Flycast the first packet back was the answer for `pool.ntp.org`, from port 53. The app only takes a packet from the server's address and port 123
+- A server name like `-8` resolves as an address in KOS, so a typo there ends in "No answer" rather than "Could not find"
+
+`tests/nettime.replay` runs against `tests/ntpserver.py`, which always answers 18:00:00 UTC on 4 Nov 2026. With `-8` the clock goes to 10:00:00 and `*Time` reads 10:00:11 nine seconds later, the same on three runs. +5:30 with Summer time gave Thu 5 Nov 00:30:00, across midnight. No answer, an unknown name and the network not being up each say so in the window. It isn't in `tests/expected.txt` as it needs the server:
+
+```bash
+python3 tests/ntpserver.py 8123 1793815200 &
+DREAM_NTP=127.0.0.1:8123 DREAM_REPLAY=tests/nettime.replay ./build/archicast-host build/rom.bin assets/cmos.bin 106 build/shot.ppm
+```
+
+Flycast (11/4), real `pool.ntp.org` over the emulated BBA with `-8` (`tests/nettime-hw.replay`): "The clock was already right, now Wed,04 Nov 2026.19:24:30", as Flycast seeds the console clock from the Mac's local time.
+
+Console (11/4), real BBA under dcload, same replay: "Was 13 days 3:16:26 fast, now Wed,04 Nov 2026.19:42:46", and the console's clock read 19:43:07 at the last checkpoint against 19:43:08 on the Mac. So the console now keeps Pacific time. OS_Word 15's time and date bursts each reach `rtc_set_unix_secs()`, so for a few ms in between the console holds the new time on the old date. The first attempt printed nothing for 300s; another session was on the console around then, and the gate only knows `dc-hw.sh run`, `power` and `reset` and `dc-tool-ip`. The retry waited for a Dreamkarts benchmark and went through. Save has only run on the harness, so `DRISCTIM` on a real VMU is untested.
+
 ## Network
 
 RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based ARM binary. So the stack is native (KOS) and the guest reaches it through DreamNet SWIs at `&CDC00`, a chunk from the range RISC OS leaves to users. `src/net.c` catches them in `swi_insn` before the kernel sees them. Results come back in r0 as a value or -errno, and there's no V-set error path, as nothing guest-side owns memory for an error block. We skipped Acorn's `Socket_*` numbers since no existing binary could call them anyway.
@@ -257,6 +276,8 @@ RISC OS 3.11 has no TCP/IP in ROM, and Acorn's Internet module was a disc-based 
 | +33 | BoxFS | the Dreambox veneers, see Dreambox; out r12 = 0 done, 1 call again, 2 error in r0 |
 | +34 | BoxInit | r2 -> 512 bytes of RMA for error blocks and the icon bar task |
 | +35 | BoxTask | the icon bar task's next step: in r10 = the SWI just made (-1 on start), out r10 = the next one, r0-r7 its registers |
+| +36, +37 | Reset, FindRunning | DreamApps on Service_Reset; !Find's claim on running |
+| +38, +39 | TimeGetConfig, TimeSaveConfig | r0 -> 64 byte block: UTC offset in minutes, summer time, server; save writes a VMU |
 
 Addresses are one word, most significant byte first. Blocks are laid out in `src/net.h`.
 

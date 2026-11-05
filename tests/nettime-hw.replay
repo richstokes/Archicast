@@ -1,0 +1,21 @@
+# Flycast and console: !NetTime against the real pool.ntp.org with UTC -8 (the Mac's
+# zone, PST), then *Time. No VMU file, so the server is the default.
+# Flycast: tools/replay2c.py tests/nettime-hw.replay -36, with HW_REPLAY=1.
+70 key 0 12 1
+70.1 key 0 12 0
+72 type filer_run resources:$.apps.!nettime\n
+77 key 4 7 1
+77.1 key 4 7 0
+84 shot build/nh1.ppm
+93 key 2 6 1
+93.1 key 2 6 0
+94 key 3 11 1
+94.1 key 2 13 1
+94.2 key 2 13 0
+94.3 key 3 11 0
+95 type -8\n
+110 shot build/nh2.ppm
+111 key 0 12 1
+111.1 key 0 12 0
+113 type time\n
+118 shot build/nh3.ppm

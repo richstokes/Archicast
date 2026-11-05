@@ -28,6 +28,13 @@ typedef struct {
 	char text[32];       /* one line of progress for the user */
 } net_status_t;
 
+/* !NetTime's settings, shared with BASIC like the two above */
+typedef struct {
+	int32_t offset_min;  /* local time minus UTC */
+	uint32_t summer;     /* non-zero adds an hour */
+	char server[56];     /* name or address, with :port if it isn't 123 */
+} time_config_t;
+
 #define NET_SEQS 16 /* ping replies remembered, by sequence number */
 
 void plat_net_init(void);
@@ -41,6 +48,8 @@ void plat_net_ping(const uint8_t ip[4], uint32_t seq);
 int plat_net_ping_result(uint32_t seq, uint32_t *rtt_us, uint32_t *ttl); /* 1 got it, 0 waiting */
 void plat_net_resolve(const char *name);
 int plat_net_resolve_result(uint8_t ip[4]); /* 1 got it, 0 waiting, -1 failed */
+int plat_time_load(time_config_t *config);       /* 1 if there was one */
+int plat_time_save(const time_config_t *config); /* 0 once it will survive power off */
 
 /* Non-blocking sockets, shared between platforms (net_sock.c). A negative
  * result is a BSD errno as RISC OS numbers them, so 35 means try again. */

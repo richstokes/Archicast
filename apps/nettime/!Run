@@ -1,0 +1,4 @@
+IconSprites <Obey$Dir>.!Sprites
+Set NetTime$Dir <Obey$Dir>
+WimpSlot -min 64K -max 64K
+Run <NetTime$Dir>.!RunImage

@@ -1,0 +1,21 @@
+# !NetTime against tests/ntpserver.py: set UTC to -8 and set the clock, then *Time.
+# python3 tests/ntpserver.py 8123 1793815200 &
+# DREAM_NTP=127.0.0.1:8123 DREAM_REPLAY=tests/nettime.replay ./build/archicast-host build/rom.bin assets/cmos.bin 110 /dev/null
+70 key 0 12 1
+70.1 key 0 12 0
+72 type filer_run resources:$.apps.!nettime\n
+77 key 4 7 1
+77.1 key 4 7 0
+84 shot build/nt1.ppm
+85 key 2 6 1
+85.1 key 2 6 0
+86 key 3 11 1
+86.1 key 2 13 1
+86.2 key 2 13 0
+86.3 key 3 11 0
+87 type -8\n
+96 shot build/nt2.ppm
+97 key 0 12 1
+97.1 key 0 12 0
+99 type time\n
+104 shot build/nt3.ppm

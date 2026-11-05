@@ -17,7 +17,7 @@ enum {
 	DN_SOCK_CLOSE, DN_WEB_OPEN, DN_WEB_BACK, DN_WEB_STATUS, DN_WEB_INFO, DN_WEB_LINE, DN_WEB_CLICK, DN_WEB_FIELD_GET,
 	DN_WEB_FIELD_SET, DN_PRINT_DUMP, DN_PRINT_GET_CONFIG, DN_PRINT_SET_CONFIG, DN_PRINT_SAVE_CONFIG,
 	DN_PRINT_STATUS, DN_FIND, DN_FIND_LINE, DN_FIND_DRIVE, DN_BOX_FS, DN_BOX_INIT, DN_BOX_TASK,
-	DN_RESET, DN_FIND_RUNNING,
+	DN_RESET, DN_FIND_RUNNING, DN_TIME_GET_CONFIG, DN_TIME_SAVE_CONFIG,
 };
 
 #define ERR_INVAL 22
@@ -85,6 +85,23 @@ static int parse_dotted(const char *s, u8 ip[4])
 
 static u8 literal_ip[4];
 static int have_literal;
+
+/* !NetTime's settings: off a VMU the first time they're asked for */
+static time_config_t time_config;
+static int time_loaded;
+
+static void time_config_get(time_config_t *c)
+{
+	if (!time_loaded) {
+		time_loaded = 1;
+		if (!plat_time_load(&time_config)) {
+			memset(&time_config, 0, sizeof(time_config));
+			strcpy(time_config.server, "pool.ntp.org");
+		}
+		time_config.server[sizeof(time_config.server) - 1] = 0;
+	}
+	*c = time_config;
+}
 
 static s32 sock_transfer(u32 op)
 {
@@ -396,6 +413,16 @@ void net_swi(u32 op)
 	case DN_RESET: /* from DreamApps on Service_Reset: Ctrl+Break kept memory, but no task survived */
 		dreambox_reset();
 		find_running = 0;
+		break;
+	case DN_TIME_GET_CONFIG: /* !NetTime: r0 -> 64 byte block */
+		time_config_get(&time_config);
+		guest_write(R(0), &time_config, sizeof(time_config));
+		break;
+	case DN_TIME_SAVE_CONFIG: /* kept for the session, and on a VMU if there is room */
+		guest_read(R(0), &time_config, sizeof(time_config));
+		time_config.server[sizeof(time_config.server) - 1] = 0;
+		time_loaded = 1;
+		result = plat_time_save(&time_config);
 		break;
 	case DN_FIND_RUNNING: /* r0 = 1 to claim, 0 to let go; says whether it was claimed */
 		result = find_running;

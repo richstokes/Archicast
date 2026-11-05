@@ -26,6 +26,8 @@
 #define PRINT_CONFIG_NAME "DRISCPRN"
 #define PRINT_CONFIG_MAGIC 0x31525044u
 #define BOX_CONFIG_NAME "DRISCBOX"
+#define TIME_CONFIG_NAME "DRISCTIM"
+#define TIME_CONFIG_MAGIC 0x314D5444u
 #define BOX_CONFIG_MAGIC 0x31584244u
 #define WORKER_STACK 0x8000
 #define IDLE_MS 20
@@ -598,4 +600,35 @@ int plat_dreambox_save(const char *token)
 	saved.magic = BOX_CONFIG_MAGIC;
 	snprintf(saved.token, sizeof(saved.token), "%s", token);
 	return vmu_save(BOX_CONFIG_NAME, &saved, sizeof(saved));
+}
+
+int plat_time_load(time_config_t *c)
+{
+	struct { uint32_t magic; time_config_t config; } saved;
+	maple_device_t *dev;
+	char path[32];
+	int unit;
+	for (unit = 0; (dev = maple_enum_type(unit, MAPLE_FUNC_MEMCARD)); unit++) {
+		file_t f;
+		ssize_t got;
+		vmu_path(path, sizeof(path), dev, TIME_CONFIG_NAME);
+		f = fs_open(path, O_RDONLY);
+		if (f == FILEHND_INVALID)
+			continue;
+		got = fs_read(f, &saved, sizeof(saved));
+		fs_close(f);
+		if (got == sizeof(saved) && saved.magic == TIME_CONFIG_MAGIC) {
+			memcpy(c, &saved.config, sizeof(*c));
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int plat_time_save(const time_config_t *c)
+{
+	struct { uint32_t magic; time_config_t config; } saved;
+	saved.magic = TIME_CONFIG_MAGIC;
+	memcpy(&saved.config, c, sizeof(*c));
+	return vmu_save(TIME_CONFIG_NAME, &saved, sizeof(saved));
 }
