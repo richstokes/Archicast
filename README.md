@@ -61,7 +61,7 @@ curl -L -o ROM311 "https://archive.org/download/RISC-OS-ROM-collection/ROMS.rar/
 for i in 0 1 2 3; do f=IC$((24+i)).ROM; [ $i = 2 ] && f=IC26.rom; dd if=ROM311 of="$ROM_DIR/$f" bs=524288 skip=$i count=1; done
 ```
 
-The first build downloads bundled apps, pinned by hash, into `build/upstream/`.
+The first build downloads two bundled apps (Tertis and Lander) from GitHub into `build/upstream/` and checks them against pinned hashes.
 
 Host tools: KallistiOS, Python 3, meson, ninja, pkg-config and libisofs (`brew install meson ninja pkg-config libisofs`). The disc-image tool mkdcdisc is vendored under [tools/mkdcdisc](tools/mkdcdisc/VENDOR.md) and built into `build/mkdcdisc/` on first run; set `MKDCDISC` to use another binary.
 
