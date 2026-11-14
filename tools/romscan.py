@@ -6,15 +6,47 @@ Computed branches are not followed, so the code figure is a lower bound.
 """
 import argparse
 import collections
+import hashlib
 import struct
+import sys
+import urllib.request
 from pathlib import Path
 
 ROM_BASE = 0x3800000
 ROM_CHIPS = ("IC24.ROM", "IC25.ROM", "IC26.rom", "IC27.ROM")
+CHIP_SHA1 = (
+    "12d060e0401dd0523d44453f947bdc55dd2c3240",
+    "78f5d0e6f1e8ee603317807f53ff8fe65a3b3518",
+    "46b870876bc1f68f242726415f0c49fef7be0c72",
+    "345199a33fed23996374b9db8170a52ab63f0380",
+)
+CHIP_SIZE = 0x80000
+# The four chips back to back, inside a RAR that archive.org serves members of.
+ROM_URL = "https://archive.org/download/RISC-OS-ROM-collection/ROMS.rar/ROMS%2F1.%20Major%2FROM311"
+
+
+def fetch_rom(directory):
+    """Download the 3.11 image and split it into whichever chip files are missing."""
+    print(f"ROM not found in {directory}, fetching {ROM_URL}", file=sys.stderr)
+    try:
+        with urllib.request.urlopen(ROM_URL) as reply:
+            image = reply.read()
+    except OSError as error:
+        sys.exit(f"couldn't download the ROM ({error}); put the chip dumps in {directory} by hand")
+    directory.mkdir(parents=True, exist_ok=True)
+    for i, (name, sha1) in enumerate(zip(ROM_CHIPS, CHIP_SHA1)):
+        chip = image[i * CHIP_SIZE:(i + 1) * CHIP_SIZE]
+        if hashlib.sha1(chip).hexdigest() != sha1:
+            sys.exit(f"downloaded ROM doesn't match {name}'s SHA-1; put the chip dumps in {directory} by hand")
+        if not (directory / name).exists():
+            (directory / name).write_bytes(chip)
 
 
 def load_rom(directory):
-    return b"".join((Path(directory) / name).read_bytes() for name in ROM_CHIPS)
+    directory = Path(directory)
+    if not all((directory / name).exists() for name in ROM_CHIPS):
+        fetch_rom(directory)
+    return b"".join((directory / name).read_bytes() for name in ROM_CHIPS)
 
 
 def word(rom, offset):

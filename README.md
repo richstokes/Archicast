@@ -51,6 +51,16 @@ The directory needs these four 512KB chip dumps, named exactly as shown (`IC26.r
 | `IC26.rom` | 524288 | `a81ceb7c` | `46b870876bc1f68f242726415f0c49fef7be0c72` |
 | `IC27.ROM` | 524288 | `707b0c6c` | `345199a33fed23996374b9db8170a52ab63f0380` |
 
+If any are missing, the build downloads RISC OS 3.11 from [archive.org](https://archive.org/details/RISC-OS-ROM-collection), checks the hashes and splits it into `ROM_DIR`. To do the same by hand:
+
+```bash
+curl -L -o ROM311 "https://archive.org/download/RISC-OS-ROM-collection/ROMS.rar/ROMS%2F1.%20Major%2FROM311"
+```
+
+```bash
+for i in 0 1 2 3; do f=IC$((24+i)).ROM; [ $i = 2 ] && f=IC26.rom; dd if=ROM311 of="$ROM_DIR/$f" bs=524288 skip=$i count=1; done
+```
+
 The first build downloads bundled apps, pinned by hash, into `build/upstream/`.
 
 Host tools: KallistiOS, Python 3, meson, ninja, pkg-config and libisofs (`brew install meson ninja pkg-config libisofs`). The disc-image tool mkdcdisc is vendored under [tools/mkdcdisc](tools/mkdcdisc/VENDOR.md) and built into `build/mkdcdisc/` on first run; set `MKDCDISC` to use another binary.
